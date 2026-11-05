@@ -26,7 +26,7 @@
 - Formats : mp3, wav, ogg (vorbis), flac. Son de plus de **5 minutes** refusé (journalisé) : 5 min à 48 kHz stéréo f32 ≈ 115 Mo de mémoire.
 - La config existante reste valide : section `sound` avec `#[serde(default)]`, `version` reste 1.
 - Une config invalide ne remplace jamais la dernière valide (règle du moteur, inchangée). Un fichier son manquant ou illisible **n'invalide pas** la config : le son est sauté et journalisé.
-- Mode micro par défaut : `External` (le logiciel ne touche pas au micro, molette droite = volume micro Windows, comme aujourd'hui).
+- Mode micro par défaut : `External` (le logiciel ne touche pas au micro, molette droite = volume micro Windows, comme aujourd'hui). Alan ne veut pas de délai sur sa voix : le mode `App` reste une option, jamais activée sans action de l'utilisateur.
 - Aucun test automatique n'ouvre un vrai périphérique audio ni ne joue de son : ceux qui le font sont `#[ignore]`.
 - Commandes cargo **sans** `rtk` (non installé sur la machine, décision prise au plan moteur).
 - Messages de commit terminés par `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Travail sur la branche `feat/soundboard`.
@@ -35,6 +35,7 @@
 
 ```json
 "sound": {
+  "master_volume": 100,
   "monitor_device": null,  "monitor_volume": 100,
   "cable_device": null,    "cable_volume": 100,
   "mic_mode": "External",  "mic_device": null, "mic_gain": 100,
@@ -45,9 +46,10 @@
 ```
 
 - `*_device` : `null` = périphérique par défaut (casque, micro) ou détection auto de VB-Cable (sortie dont le nom contient `CABLE Input`) ; sinon sous-chaîne du nom, sans tenir compte de la casse.
-- Volumes et gain : entiers 0..=100. Volume final d'un son = `volume/100 × sortie_volume/100`. `monitor_volume: 0` = ne pas s'entendre.
+- Volumes et gain : entiers 0..=100. Volume final d'un son = `master × volume/100 × sortie_volume/100`. `monitor_volume: 0` = ne pas s'entendre.
+- **Volume de la soundboard** (`master_volume`, demandé par Alan le 2026-11-05) : un seul réglage pour tout ce que la soundboard sort, sons **et**, en mode `App`, le micro qu'elle mélange (« si le micro passe dedans, il est logique de le gérer aussi »). Il agit en direct, y compris sur les sons déjà en cours. Actions `{ "type": "SoundVolume", "delta": 5 }` et `{ "type": "SoundMute" }` (couper / rétablir), assignables à n'importe quelle molette ou touche. Les molettes par défaut ne changent pas (gauche = volume Windows, droite = micro). Comme le gain micro, la valeur réglée vit en mémoire ; celle du fichier s'applique au démarrage et quand elle y change.
 - `on_repeat` : `Restart` (coupe et relance) ou `Stop` (rappui pendant la lecture = arrêt).
-- Actions nouvelles : `{ "type": "Sound", "id": "airhorn" }`, `{ "type": "StopSounds" }`.
+- Actions nouvelles : `{ "type": "Sound", "id": "airhorn" }`, `{ "type": "StopSounds" }`, `{ "type": "SoundVolume", "delta": 5 }`, `{ "type": "SoundMute" }`.
 - `MicVolume` / `MicMute` : en mode `External`, inchangés (micro Windows) ; en mode `App`, ils règlent le gain / la sourdine du micro mélangé par l'appli. Le gain modifié à la molette vit en mémoire (non réécrit dans la config) ; la valeur de la config s'applique au démarrage et chaque fois qu'elle **change** dans le fichier.
 
 ## Review Focus
@@ -63,22 +65,22 @@
 ### Task 1: Config — section `sound` et nouvelles actions
 
 **Files:**
-- Modify: `engine/src/config.rs`, `engine/src/dispatch.rs` (bras `match` de `SystemExecutor::run` : `Sound`/`StopSounds` → `Err("soundboard non branchee")` provisoire, remplacé en Task 7)
+- Modify: `engine/src/config.rs`, `engine/src/dispatch.rs` (bras `match` de `SystemExecutor::run` : `Sound`/`StopSounds`/`SoundVolume`/`SoundMute` → `Err("soundboard non branchee")` provisoire, remplacé en Task 7)
 - Create: `engine/tests/fixtures/sound.json`
 - Test: `engine/tests/config.rs`
 
 **Interfaces:**
 - Produces (dans `config.rs`) :
-  - `pub struct SoundSettings { pub monitor_device: Option<String>, pub monitor_volume: u8, pub cable_device: Option<String>, pub cable_volume: u8, pub mic_mode: MicMode, pub mic_device: Option<String>, pub mic_gain: u8, pub sounds: Vec<SoundDef> }`, `impl Default` (volumes et gain 100, `External`, `None`, liste vide), `#[serde(default)]` au niveau struct.
+  - `pub struct SoundSettings { pub master_volume: u8, pub monitor_device: Option<String>, pub monitor_volume: u8, pub cable_device: Option<String>, pub cable_volume: u8, pub mic_mode: MicMode, pub mic_device: Option<String>, pub mic_gain: u8, pub sounds: Vec<SoundDef> }`, `impl Default` (volumes et gain 100, `External`, `None`, liste vide), `#[serde(default)]` au niveau struct.
   - `pub enum MicMode { External, App }`, `pub enum OnRepeat { Restart, Stop }`
   - `pub struct SoundDef { pub id: String, pub path: String, pub volume: u8, pub on_repeat: OnRepeat }` (`volume` défaut 100, `on_repeat` défaut `Restart`)
-  - `Config.sound: SoundSettings` avec `#[serde(default)]` ; `Action::Sound { id: String }`, `Action::StopSounds`.
+  - `Config.sound: SoundSettings` avec `#[serde(default)]` ; `Action::Sound { id: String }`, `Action::StopSounds`, `Action::SoundVolume { delta: i8 }`, `Action::SoundMute`.
   - Toutes les structs : `Serialize, Deserialize, Debug, Clone, PartialEq`.
 
 - [ ] **Step 1: Tests qui échouent** dans `tests/config.rs` :
   - `old_config_without_sound_still_loads` : `two_bindings.json` existant → `parse` OK et `cfg.sound == SoundSettings::default()`.
   - `sound_fixture_parses` : `fixtures/sound.json` (un profil, binding `K00` Press → `Sound { id: "airhorn" }`, binding `K01` Press → `StopSounds`, deux sons `airhorn` (volume 80, `Stop`) et `clap` (champs optionnels omis)) → `clap.volume == 100`, `clap.on_repeat == OnRepeat::Restart`, `mic_mode == MicMode::External`.
-  - `rejects_bad_sound_settings` (via `invalid()`) : id de son en double ; id vide ; `volume: 101` ; `monitor_volume: 101` ; `mic_gain: 101` ; action `Sound` vers un id absent de `sounds` (aussi dans un `Toggle` et dans une `Macro`).
+  - `rejects_bad_sound_settings` (via `invalid()`) : id de son en double ; id vide ; `volume: 101` ; `monitor_volume: 101` ; `master_volume: 101` ; `mic_gain: 101` ; `SoundVolume { delta: 101 }` ; action `Sound` vers un id absent de `sounds` (aussi dans un `Toggle` et dans une `Macro`).
 - [ ] **Step 2:** `cargo test -p engine --test config` → les nouveaux tests échouent (compilation).
 - [ ] **Step 3: Implémenter.** `validate` vérifie ids uniques et non vides, bornes 0..=100, et que chaque `Sound { id }` (y compris imbriqué) existe : passer l'ensemble des ids à `check_action`.
 - [ ] **Step 4:** `cargo test -p engine` → tout passe (les 50 anciens tests compris) ; `cargo clippy -p engine --all-targets -- -D warnings` propre.
@@ -95,11 +97,13 @@
 - Produces :
   - `pub struct Clip { pub samples: Arc<[f32]>, pub channels: u16, pub rate: u32 }` (échantillons entrelacés)
   - `pub struct VoiceState { stop: AtomicBool, live: AtomicU32 }` avec `pub fn new() -> Arc<Self>`, `pub fn stop(&self)`, `pub fn is_playing(&self) -> bool` (`live > 0 && !stop`)
-  - `pub struct Voice` : `pub fn new(clip: &Clip, gain: f32, state: Arc<VoiceState>) -> Voice` ; `impl Iterator<Item = f32>` et `impl rodio::Source` (`current_span_len` = `None`, `total_duration` = `None`). `new` incrémente `live` ; la voix le décrémente **une seule fois** quand elle se termine (fin du tampon ou fin du fondu) et dans `Drop` si elle n'est pas terminée.
+  - `pub struct Master { level: AtomicU32 /* bits f32 */, muted: AtomicBool }` : `pub fn new(level: f32) -> Arc<Self>`, `pub fn get(&self) -> f32` (0 si coupé), `pub fn set(&self, v: f32)`, `pub fn level(&self) -> f32` (ignore la sourdine), `pub fn toggle_mute(&self) -> bool`.
+  - `pub struct Voice` : `pub fn new(clip: &Clip, gain: f32, master: Arc<Master>, state: Arc<VoiceState>) -> Voice` ; chaque échantillon = `sample × gain × master.get()`, `master` relu à chaque début de trame (le volume bouge pendant la lecture) ; `impl Iterator<Item = f32>` et `impl rodio::Source` (`current_span_len` = `None`, `total_duration` = `None`). `new` incrémente `live` ; la voix le décrémente **une seule fois** quand elle se termine (fin du tampon ou fin du fondu) et dans `Drop` si elle n'est pas terminée.
 - Fondu : quand `stop` est vu, le gain descend linéairement à 0 en `FADE_FRAMES = rate * 5 / 1000` trames, puis `None`. Le fondu ne commence qu'en début de trame (jamais entre deux canaux d'une même trame).
 
 - [ ] **Step 1: Tests qui échouent** :
-  - `plays_all_samples_with_gain` : clip `[0.5; 8]`, 2 canaux, gain 0.5 → 8 échantillons à 0.25 puis `None`.
+  - `plays_all_samples_with_gain` : clip `[0.5; 8]`, 2 canaux, gain 0.5, master 1.0 → 8 échantillons à 0.25 puis `None`.
+  - `master_changes_live` : clip `[1.0; 8]`, 2 canaux ; lire 2 échantillons (1.0), `master.set(0.5)` → les suivants valent 0.5 ; `toggle_mute()` → 0.0.
   - `live_counts_voices` : deux `Voice` sur le même état → `live == 2` ; vider l'une → 1 ; `drop` de l'autre non vidée → 0, `is_playing() == false`.
   - `stop_fades_then_ends` : clip de 1 s à 1.0, 48 kHz, 2 canaux ; lire 10 échantillons, `stop()`, puis collecter : la suite est décroissante, compte `2 * 240` échantillons (± une trame), se termine par `None` ; les deux canaux d'une trame ont la même valeur.
 - [ ] **Step 2:** `cargo test -p engine sound::voice` → échec.
@@ -144,10 +148,11 @@
 - Consumes : `Voice`, `VoiceState`, `Clip` (Task 2), `Library`, `Loaded` (Task 3), `SoundSettings`, `OnRepeat`, `MicMode` (Task 1).
 - Produces :
   - `pub struct Outputs { pub monitor: Option<rodio::mixer::Mixer>, pub cable: Option<rodio::mixer::Mixer> }` (`Default` = deux `None`)
-  - `pub struct Soundboard { outputs: ArcSwap<Outputs>, library: ArcSwap<Library>, settings: ArcSwap<SoundSettings>, voices: Mutex<HashMap<String, Arc<VoiceState>>>, mic_gain: AtomicU32 /* bits f32 */, mic_muted: AtomicBool }`
+  - `pub struct Soundboard { master: Arc<Master>, outputs: ArcSwap<Outputs>, library: ArcSwap<Library>, settings: ArcSwap<SoundSettings>, voices: Mutex<HashMap<String, Arc<VoiceState>>>, mic_gain: AtomicU32 /* bits f32 */, mic_muted: AtomicBool }`
   - `pub fn new() -> Arc<Soundboard>`
   - `pub fn set_outputs(&self, o: Outputs)` (appelé par le thread audio, Task 6)
-  - `pub fn apply(&self, s: &SoundSettings)` : reconstruit la bibliothèque (`Library::build` avec l'ancienne en cache), stocke les réglages ; si `mic_gain` diffère de l'ancien réglage, remet le gain en mémoire à cette valeur.
+  - `pub fn apply(&self, s: &SoundSettings)` : reconstruit la bibliothèque (`Library::build` avec l'ancienne en cache), stocke les réglages ; si `mic_gain` (resp. `master_volume`) diffère de l'ancien réglage, remet la valeur en mémoire à celle du fichier.
+  - `pub fn change_master(&self, delta: i8) -> f32` (réutilise `clamp_level`), `pub fn toggle_master_mute(&self) -> bool`, `pub fn master(&self) -> Arc<Master>` (pour la source micro, Task 5).
   - `pub fn play(&self, id: &str) -> Result<(), String>` : son inconnu ou non chargé → `Err` ; selon `on_repeat` et la voix en cours (`is_playing`) : `Restart` → `stop()` l'ancienne puis joue ; `Stop` → `stop()` et ne rejoue pas. Jouer = une `Voice` par sortie présente, gain `loaded.volume × sortie_volume/100`, sortie à volume 0 sautée, un seul `VoiceState` partagé enregistré sous l'id.
   - `pub fn stop_all(&self)` : `stop()` sur toutes les voix, table vidée.
   - `pub fn mic_via_app(&self) -> bool`, `pub fn change_mic_gain(&self, delta: i8) -> f32` (réutilise `actions::audio::clamp_level`), `pub fn toggle_mic_mute(&self) -> bool`, `pub fn mic_gain(&self) -> f32` (0 si sourdine) — lus par la source micro (Task 5) via `Arc<Soundboard>`.
@@ -159,7 +164,8 @@
   - `stop_mode_toggles` : `Stop` : `play` → joue ; `play` → arrête, et un 3ᵉ `play` rejoue.
   - `stop_all_silences` : deux sons, `stop_all`, tirer 1 000 échantillons → les derniers sont 0.0.
   - `unknown_sound_is_err` et `no_outputs_is_ok` (aucune sortie : `Ok`, rien ne casse).
-  - `mic_gain_kept_across_apply` : `apply(gain 100)`, `change_mic_gain(-20)` → 0.8 ; `apply` du même réglage → toujours 0.8 ; `apply(gain 50)` → 0.5.
+  - `mic_gain_kept_across_apply` : `apply(gain 100)`, `change_mic_gain(-20)` → 0.8 ; `apply` du même réglage → toujours 0.8 ; `apply(gain 50)` → 0.5. Même test pour `master_volume` / `change_master`.
+  - `master_scales_playing_sound` : un son en cours ; `change_master(-50)` → les échantillons suivants des deux sorties sont divisés par deux ; `toggle_master_mute()` → 0.0 ; encore → reprise.
 - [ ] **Step 2:** `cargo test -p engine sound::board` → échec.
 - [ ] **Step 3: Implémenter.**
 - [ ] **Step 4:** tests + clippy OK.
@@ -181,13 +187,13 @@
   1. Pas amorcé : si le tampon contient moins de `TARGET_MS` → renvoyer 0.0 ; sinon amorcé.
   2. Amorcé et tampon vide → désamorcer, renvoyer 0.0.
   3. Tampon au-delà de `MAX_MS` → jeter des trames entières jusqu'à revenir à `TARGET_MS`.
-  4. Sinon `pop() × board.mic_gain()`.
+  4. Sinon `pop() × board.mic_gain() × master.get()` (le volume de la soundboard s'applique aussi au micro qu'elle mélange).
 
 - [ ] **Step 1: Tests qui échouent** (48 kHz, 2 canaux ; le producteur est poussé à la main) :
   - `silence_until_primed` : pousser 10 ms → la source rend des 0.0 ; pousser 10 ms de plus → elle rend les valeurs poussées.
   - `underrun_gives_silence_and_reprimes` : après avoir tout lu → 0.0, puis 0.0 tant qu'on n'a pas repoussé 15 ms.
   - `drift_is_trimmed_frame_aligned` : pousser 100 ms où le canal gauche vaut +1 et le droit −1 → après lecture de deux échantillons, il reste ≈ 15 ms dans le tampon, et tout ce qui est lu alterne +1, −1 (jamais deux du même signe à la suite).
-  - `gain_and_mute_apply` : `change_mic_gain(-50)` → valeurs × 0.5 ; `toggle_mic_mute()` → 0.0.
+  - `gain_and_mute_apply` : `change_mic_gain(-50)` → valeurs × 0.5 ; `toggle_mic_mute()` → 0.0 ; sourdine levée puis `change_master(-50)` → valeurs × 0.25 (gain micro 0.5 × master 0.5).
   - `never_returns_none` : source sans producteur actif (producteur lâché) → toujours `Some(0.0)`.
 - [ ] **Step 2:** `cargo test -p engine sound::mic` → échec.
 - [ ] **Step 3: Implémenter.**
@@ -230,7 +236,7 @@
 **Interfaces:**
 - Consumes : `Soundboard` (Task 4), `start_audio`, `AudioHandle`, `cable_present` (Task 6).
 - Produces / changes :
-  - `pub struct SystemExecutor { pub sound: Arc<Soundboard> }`. `Sound { id }` → `sound.play(&id)` ; `StopSounds` → `sound.stop_all()` ; `MicVolume` / `MicMute` → si `sound.mic_via_app()`, gain / sourdine de l'appli, sinon micro Windows comme aujourd'hui.
+  - `pub struct SystemExecutor { pub sound: Arc<Soundboard> }`. `Sound { id }` → `sound.play(&id)` ; `StopSounds` → `sound.stop_all()` ; `SoundVolume { delta }` → `sound.change_master(delta)` ; `SoundMute` → `sound.toggle_master_mute()` ; `MicVolume` / `MicMute` → si `sound.mic_via_app()`, gain / sourdine de l'appli, sinon micro Windows comme aujourd'hui.
   - `watch_config(path, target, on_reload: impl Fn(&Config) + Send + 'static)` : appelé sur le thread du watcher après chaque config **acceptée** (jamais pour une rejetée).
   - `main` : `let board = Soundboard::new(); let audio = start_audio(board.clone());` puis, avec la config chargée, `board.apply(&cfg.sound); audio.apply(&cfg.sound);` ; même chose dans `on_reload`. `SystemExecutor { sound: board }`.
   - `create_tray(cable_missing: bool)` : si `true`, entrée « VB-Cable absent : l'installer… » qui ouvre `https://vb-audio.com/Cable/` avec `launch::open`. `shortcut:` état lu au démarrage seulement, l'interface (plan 6) affichera l'état en direct.
@@ -241,5 +247,5 @@
 - [ ] **Step 2:** `cargo test -p engine` → échec (signature de `watch_config`).
 - [ ] **Step 3: Implémenter.** Adapter les appels existants à `watch_config` (tests compris).
 - [ ] **Step 4: Vérifier** : `cargo test -p engine` (tout vert, `e2e` compris), `cargo clippy -p engine --all-targets -- -D warnings`, `cargo build --locked --release`.
-- [ ] **Step 5: Documentation.** `engine/README.md` : section « Soundboard » (modèle de config ci-dessus, VB-Cable : installer, puis choisir « CABLE Output » comme micro dans le jeu / Discord / OBS ; mode `External` : brancher le vrai micro sur VB-Cable par Windows « Écouter ce périphérique » ou par l'interface audio ; mode `App` : latence ~25–40 ms, micro muet si le moteur est fermé, et ne pas activer en plus « Écouter ce périphérique » sinon le micro est doublé). Ajouter à la liste « À tester à la main » : son dans le casque ; son dans « CABLE Output » (enregistreur Windows ou Discord) ; rappui `Restart` et `Stop` ; `StopSounds` ; débrancher le casque pendant un son puis rebrancher ; changer la sortie par défaut de Windows ; VB-Cable absent → entrée dans l'icône ; mode `App` : voix audible dans « CABLE Output », molette droite = gain, clic = sourdine, latence ressentie.
+- [ ] **Step 5: Documentation.** `engine/README.md` : section « Soundboard » (modèle de config ci-dessus, VB-Cable : installer, puis choisir « CABLE Output » comme micro dans le jeu / Discord / OBS ; mode `External` : brancher le vrai micro sur VB-Cable par Windows « Écouter ce périphérique » ou par l'interface audio ; mode `App` : latence ~25–40 ms, micro muet si le moteur est fermé, et ne pas activer en plus « Écouter ce périphérique » sinon le micro est doublé). Section « Molettes » : exemple de config avec `SoundVolume` sur une molette. Ajouter à la liste « À tester à la main » : son dans le casque ; `SoundVolume` sur une molette baisse un son en cours (casque et VB-Cable) et, en mode `App`, la voix aussi ; son dans « CABLE Output » (enregistreur Windows ou Discord) ; rappui `Restart` et `Stop` ; `StopSounds` ; débrancher le casque pendant un son puis rebrancher ; changer la sortie par défaut de Windows ; VB-Cable absent → entrée dans l'icône ; mode `App` : voix audible dans « CABLE Output », molette droite = gain, clic = sourdine, latence ressentie.
 - [ ] **Step 6: Commit** `feat(engine): soundboard branchee (actions, rechargement, icone)`
