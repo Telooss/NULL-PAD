@@ -1,0 +1,3 @@
+{"version":1,"timing":{"hold_ms":300,"double_ms":250},"profiles":[{"id":1,"name":"P","tag":"AB1","bindings":[
+{"input":"K00","trigger":"Press","action":{"type":"Shortcut","keys":"Ctrl+S"}},
+{"input":"K00","trigger":"Hold","action":{"type":"Media","key":"PlayPause"}}]}]}
