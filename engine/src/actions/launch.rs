@@ -1,5 +1,5 @@
 use std::os::windows::process::CommandExt;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use windows::core::{w, HSTRING};
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
@@ -10,6 +10,7 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 pub fn launch(program: &str, args: &[String]) -> Result<(), String> {
     Command::new(program)
         .args(args)
+        .stdin(Stdio::null())
         .spawn()
         .map(drop)
         .map_err(|e| format!("{program}: {e}"))
@@ -39,7 +40,9 @@ pub fn open(target: &str) -> Result<(), String> {
 pub fn command(line: &str) -> Result<(), String> {
     Command::new("powershell.exe")
         .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", line])
-        .stdout(std::process::Stdio::null())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .creation_flags(CREATE_NO_WINDOW)
         .spawn()
         .map(drop)
