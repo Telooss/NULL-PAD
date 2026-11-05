@@ -43,7 +43,7 @@ impl Executor for SystemExecutor {
             Action::Macro { .. } | Action::Toggle { .. } => Err("action non unitaire".into()),
         };
         if let Err(e) = res {
-            eprintln!("action en erreur: {e}");
+            tracing::error!("action en erreur: {e}");
         }
     }
 }
@@ -77,7 +77,7 @@ impl Dispatcher {
             for a in rx {
                 // Une panique ne doit pas tuer le worker : sinon plus aucune action clavier.
                 if std::panic::catch_unwind(AssertUnwindSafe(|| e.run(&a))).is_err() {
-                    eprintln!("panique dans une action: {a:?}");
+                    tracing::error!("panique dans une action: {a:?}");
                 }
             }
         });

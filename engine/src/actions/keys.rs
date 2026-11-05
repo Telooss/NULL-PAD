@@ -82,7 +82,7 @@ fn send(inputs: &[INPUT]) {
     }
     let sent = unsafe { SendInput(inputs, size_of::<INPUT>() as i32) } as usize;
     if sent < inputs.len() {
-        eprintln!("SendInput: {sent}/{} evenements injectes", inputs.len());
+        tracing::warn!("SendInput: {sent}/{} evenements injectes", inputs.len());
     }
 }
 
