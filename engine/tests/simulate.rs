@@ -18,7 +18,7 @@ fn simulate_runs_command_action() {
             {"input":"K00","trigger":"Press","action":{"type":"Command","line":line}}]}]});
     std::fs::write(&cfg, json.to_string()).unwrap();
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_engine"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_nullpad"))
         .args(["--simulate", "--config"])
         .arg(&cfg)
         .stdin(Stdio::piped())

@@ -65,7 +65,7 @@ fn main() {
 
     // Instance unique (pas en simulation). Le handle reste ouvert jusqu'a la fin du processus.
     let _single = (!simulate).then(|| {
-        let h = unsafe { CreateMutexW(None, false, w!(r"Local\macropad-engine")) };
+        let h = unsafe { CreateMutexW(None, false, w!(r"Local\nullpad-engine")) };
         if h.is_ok() && unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
             tracing::info!("deja lance, arret");
             std::process::exit(0);

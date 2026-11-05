@@ -1,6 +1,6 @@
-# Moteur du macropad
+# Moteur de NULL/PAD
 
-Programme Windows 11 qui tourne en arrière-plan (icône dans la zone de notification). Le macropad envoie des codes HID « Consommateur » réservés ; le moteur les lit via Raw Input, retrouve la liaison configurée (profil + touche + type d'appui) et exécute l'action : raccourci, texte, macro, lancement d'un programme, ouverture d'un lien, commande PowerShell, touche média, volume, micro.
+Programme Windows 11 qui tourne en arrière-plan (icône dans la zone de notification). Le NULL/PAD envoie des codes HID « Consommateur » réservés ; le moteur les lit via Raw Input, retrouve la liaison configurée (profil + touche + type d'appui) et exécute l'action : raccourci, texte, macro, lancement d'un programme, ouverture d'un lien, commande PowerShell, touche média, volume, micro.
 
 - Une action à appui simple part à l'appui, pas au relâchement.
 - Une config invalide ne remplace jamais la dernière config valide.
@@ -9,7 +9,7 @@ Programme Windows 11 qui tourne en arrière-plan (icône dans la zone de notific
 ## Compiler et lancer
 
 ```powershell
-cargo build -p engine --release     # produit target\release\engine.exe
+cargo build -p engine --release     # produit target\release\nullpad.exe
 cargo run -p engine --release       # lance le moteur (icône dans la zone de notification)
 cargo test -p engine
 cargo clippy -p engine --all-targets -- -D warnings
@@ -19,13 +19,13 @@ Au tout premier lancement (pas de config), le moteur écrit une config par défa
 
 ## Mode simulation
 
-`--simulate` remplace le macropad par l'entrée standard : une ligne = un événement. Les actions sont réellement exécutées (sur votre bureau !) et les logs s'affichent dans la console. À la fin de l'entrée (Ctrl+Z puis Entrée, ou fin du pipe), le moteur attend les échéances en cours puis s'arrête.
+`--simulate` remplace le NULL/PAD par l'entrée standard : une ligne = un événement. Les actions sont réellement exécutées (sur votre bureau !) et les logs s'affichent dans la console. À la fin de l'entrée (Ctrl+Z puis Entrée, ou fin du pipe), le moteur attend les échéances en cours puis s'arrête.
 
 | Ligne | Effet |
 |---|---|
 | `down <profil> <ENTREE>` | appui sur la touche |
 | `up <profil> <ENTREE>` | relâchement |
-| `announce <profil>` | le macropad annonce son profil actif |
+| `announce <profil>` | le NULL/PAD annonce son profil actif |
 
 `<profil>` va de 1 à 8 ; `<ENTREE>` est un nom de la table plus bas (`K00`…`K19`, `M1`…`M3`, `ENC_L_CW`…).
 
@@ -39,12 +39,12 @@ cargo run -p engine -- --simulate                    # config par défaut, saisi
 `--config <chemin>` utilise un autre fichier de config (pratique avec `--simulate` pour ne pas toucher à la vraie config) :
 
 ```powershell
-engine.exe --simulate --config C:\temp\test.json
+nullpad.exe --simulate --config C:\temp\test.json
 ```
 
 ## Fichier de config
 
-Emplacement : `%APPDATA%\macropad\config.json` (le menu de l'icône ouvre le dossier).
+Emplacement : `%APPDATA%\NULL-PAD\config.json` (le menu de l'icône ouvre le dossier).
 
 Règles : `version` vaut 1 ; profils 1 à 8, ids uniques ; `tag` = exactement 3 caractères `A-Z0-9` ; une seule liaison par (touche, déclencheur) dans un profil ; `delta` de volume entre -100 et 100 ; un `Toggle` ne peut pas être imbriqué ni placé dans une `Macro`.
 
@@ -125,18 +125,18 @@ Les entrées :
 | `ENC_L_CW`, `ENC_L_CCW`, `ENC_L_PRESS` | 23, 24, 25 | encodeur gauche : horaire, anti-horaire, appui |
 | `ENC_R_CW`, `ENC_R_CCW`, `ENC_R_PRESS` | 26, 27, 28 | encodeur droit : horaire, anti-horaire, appui |
 
-Codes HID Consommateur (usages) envoyés par le macropad :
+Codes HID Consommateur (usages) envoyés par le NULL/PAD :
 
 - Action : `0x0500 + (profil - 1) × 32 + n°` (profil 1 à 8). Exemple : profil 2, `K03` = `0x0500 + 32 + 3` = `0x0523`.
 - Annonce de profil : `0x0600 + profil`. Exemple : profil 3 = `0x0603`.
 
 ## Logs
 
-Dossier `%APPDATA%\macropad\logs`, fichier `engine.log` (rotation quotidienne). En `--simulate`, les logs sont aussi affichés dans la console. Les erreurs de config, d'action et de démarrage automatique y sont consignées.
+Dossier `%APPDATA%\NULL-PAD\logs`, fichier `engine.log` (rotation quotidienne). En `--simulate`, les logs sont aussi affichés dans la console. Les erreurs de config, d'action et de démarrage automatique y sont consignées.
 
 ## À tester à la main
 
-Le test automatique (`cargo test -p engine`, dont `tests/e2e.rs`) couvre appui, appui long, double appui, bascule et macro avec attente, uniquement avec des commandes qui créent des fichiers. Le reste agit sur le bureau et reste à vérifier à la main, avec `--simulate` ou le vrai macropad :
+Le test automatique (`cargo test -p engine`, dont `tests/e2e.rs`) couvre appui, appui long, double appui, bascule et macro avec attente, uniquement avec des commandes qui créent des fichiers. Le reste agit sur le bureau et reste à vérifier à la main, avec `--simulate` ou le vrai NULL/PAD :
 
 - [ ] Raccourci (ex. `Ctrl+Shift+Esc` ouvre le gestionnaire des tâches)
 - [ ] Texte (tapé dans le bloc-notes)
@@ -147,5 +147,5 @@ Le test automatique (`cargo test -p engine`, dont `tests/e2e.rs`) couvre appui, 
 - [ ] Ouvrir (`https://example.com` s'ouvre dans le navigateur)
 - [ ] Icône de la zone de notification et son menu : « Ouvrir le dossier de config », « Démarrer avec Windows » (case cochée/décochée), « Quitter »
 - [ ] Démarrage avec Windows : actif après le premier lancement ; le moteur se relance à la prochaine ouverture de session
-- [ ] Instance unique : lancer `engine.exe` une 2e fois ne crée pas de 2e icône
+- [ ] Instance unique : lancer `nullpad.exe` une 2e fois ne crée pas de 2e icône
 - [ ] Config rechargée à l'enregistrement ; une config cassée est ignorée (voir les logs) et l'ancienne reste active
