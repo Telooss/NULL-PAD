@@ -108,7 +108,9 @@ impl Dispatcher {
         let fires = match edge {
             Edge::Down(u) => match decode(u) {
                 Some(Code::Action { profile, input }) => {
-                    let wants = self.config.load().wants(profile, input);
+                    let cfg = self.config.load();
+                    let wants = cfg.wants(profile, input);
+                    self.triggers.set_timing(cfg.timing);
                     self.triggers.down(profile, input, wants, now)
                 }
                 Some(Code::ProfileAnnounce(p)) => {
@@ -338,6 +340,23 @@ mod tests {
         d.on_edge(Edge::Down(encode_action(1, InputId(1))), Instant::now());
         assert!(ex.0.wait_len(1));
         assert!(ex.0.has("\"b\""));
+    }
+
+    #[test]
+    fn timing_is_hot_reloaded() {
+        let mut cfg = (*setup(vec![]).0.config.load_full()).clone();
+        cfg.profiles[0].bindings = vec![Binding {
+            input: InputId(0),
+            trigger: Trigger::Hold,
+            action: text("h"),
+        }];
+        let swap = Arc::new(ArcSwap::from_pointee(cfg.clone()));
+        let mut d = Dispatcher::new(swap.clone(), Arc::new(Rec::default()));
+        cfg.timing.hold_ms = 1000;
+        swap.store(Arc::new(cfg));
+        let t0 = Instant::now();
+        d.on_edge(Edge::Down(encode_action(1, InputId(0))), t0);
+        assert_eq!(d.next_deadline(), Some(t0 + Duration::from_millis(1000)));
     }
 
     #[test]

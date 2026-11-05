@@ -71,6 +71,10 @@ impl Triggers {
         }
     }
 
+    pub fn set_timing(&mut self, t: Timing) {
+        self.timing = t;
+    }
+
     fn hold(&self) -> Duration {
         Duration::from_millis(self.timing.hold_ms)
     }
