@@ -5,6 +5,7 @@ use engine::dispatch::{Dispatcher, SystemExecutor};
 use engine::input_win::{run_raw_input, DeviceFilter};
 use engine::paths::{config_path, APP_DIR};
 use engine::sim::run_simulation;
+use engine::watch::watch_config;
 use std::sync::Arc;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -48,10 +49,12 @@ fn main() {
         tracing::error!("config invalide, config par defaut en memoire: {e}");
         default_config()
     });
-    let dispatcher = Dispatcher::new(
-        Arc::new(ArcSwap::from_pointee(config)),
-        Arc::new(SystemExecutor),
-    );
+    let config = Arc::new(ArcSwap::from_pointee(config));
+    // Garde le watcher en vie jusqu'a la fin du programme.
+    let _watcher = watch_config(path.clone(), config.clone())
+        .map_err(|e| tracing::error!("surveillance de la config impossible: {e}"))
+        .ok();
+    let dispatcher = Dispatcher::new(config, Arc::new(SystemExecutor));
     if simulate {
         run_simulation(dispatcher);
     } else {

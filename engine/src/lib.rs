@@ -7,3 +7,4 @@ pub mod paths;
 pub mod report;
 pub mod sim;
 pub mod triggers;
+pub mod watch;
