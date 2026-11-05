@@ -1,15 +1,20 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use arc_swap::ArcSwap;
+use engine::autostart::set_autostart;
 use engine::config::{default_config, load, save_default_if_missing};
 use engine::dispatch::{Dispatcher, SystemExecutor};
 use engine::input_win::{run_raw_input, DeviceFilter};
 use engine::paths::{config_path, APP_DIR};
 use engine::sim::run_simulation;
+use engine::tray::create_tray;
 use engine::watch::watch_config;
 use std::sync::Arc;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use windows::core::w;
+use windows::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS};
 use windows::Win32::System::Console::{AllocConsole, AttachConsole, ATTACH_PARENT_PROCESS};
+use windows::Win32::System::Threading::CreateMutexW;
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -42,8 +47,24 @@ fn main() {
         .with(simulate.then(tracing_subscriber::fmt::layer))
         .init();
 
+    // Instance unique (pas en simulation). Le handle reste ouvert jusqu'a la fin du processus.
+    let _single = (!simulate).then(|| {
+        let h = unsafe { CreateMutexW(None, false, w!(r"Local\macropad-engine")) };
+        if h.is_ok() && unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
+            tracing::info!("deja lance, arret");
+            std::process::exit(0);
+        }
+        h
+    });
+
+    let first_launch = !path.exists();
     if let Err(e) = save_default_if_missing(&path) {
         tracing::error!("config par defaut non ecrite: {e}");
+    }
+    if first_launch && !simulate {
+        if let Err(e) = set_autostart(true) {
+            tracing::error!("demarrage auto non active: {e}");
+        }
     }
     let config = load(&path).unwrap_or_else(|e| {
         tracing::error!("config invalide, config par defaut en memoire: {e}");
@@ -58,6 +79,8 @@ fn main() {
     if simulate {
         run_simulation(dispatcher);
     } else {
+        // Cree ici : la boucle de messages de run_raw_input pompe aussi ceux de l'icone.
+        let _tray = create_tray().map_err(|e| tracing::error!("icone non creee: {e}"));
         run_raw_input(dispatcher, DeviceFilter::default());
     }
 }

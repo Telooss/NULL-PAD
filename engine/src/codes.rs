@@ -3,9 +3,35 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 const ACTION_BASE: u16 = 0x0500;
 const PROFILE_BASE: u16 = 0x0600;
 const NAMES: [&str; 29] = [
-    "K00", "K01", "K02", "K03", "K04", "K05", "K06", "K07", "K08", "K09", "K10", "K11", "K12",
-    "K13", "K14", "K15", "K16", "K17", "K18", "K19", "M1", "M2", "M3", "ENC_L_CW", "ENC_L_CCW",
-    "ENC_L_PRESS", "ENC_R_CW", "ENC_R_CCW", "ENC_R_PRESS",
+    "K00",
+    "K01",
+    "K02",
+    "K03",
+    "K04",
+    "K05",
+    "K06",
+    "K07",
+    "K08",
+    "K09",
+    "K10",
+    "K11",
+    "K12",
+    "K13",
+    "K14",
+    "K15",
+    "K16",
+    "K17",
+    "K18",
+    "K19",
+    "M1",
+    "M2",
+    "M3",
+    "ENC_L_CW",
+    "ENC_L_CCW",
+    "ENC_L_PRESS",
+    "ENC_R_CW",
+    "ENC_R_CCW",
+    "ENC_R_PRESS",
 ];
 
 /// Entree physique du macropad, 0..=28.
@@ -33,7 +59,8 @@ impl Serialize for InputId {
 impl<'de> Deserialize<'de> for InputId {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let s = String::deserialize(d)?;
-        InputId::from_name(&s).ok_or_else(|| serde::de::Error::custom(format!("entree inconnue: {s}")))
+        InputId::from_name(&s)
+            .ok_or_else(|| serde::de::Error::custom(format!("entree inconnue: {s}")))
     }
 }
 
@@ -48,7 +75,10 @@ pub fn decode(usage: u16) -> Option<Code> {
         0x0500..=0x05FF => {
             let off = usage - ACTION_BASE;
             let (profile, input) = ((off / 32) as u8 + 1, (off % 32) as u8);
-            (profile <= 8 && input <= 28).then_some(Code::Action { profile, input: InputId(input) })
+            (profile <= 8 && input <= 28).then_some(Code::Action {
+                profile,
+                input: InputId(input),
+            })
         }
         0x0601..=0x0608 => Some(Code::ProfileAnnounce((usage - PROFILE_BASE) as u8)),
         _ => None,
@@ -72,7 +102,13 @@ mod tests {
         for p in 1..=8 {
             for i in 0..=28 {
                 let u = encode_action(p, InputId(i));
-                assert_eq!(decode(u), Some(Code::Action { profile: p, input: InputId(i) }));
+                assert_eq!(
+                    decode(u),
+                    Some(Code::Action {
+                        profile: p,
+                        input: InputId(i)
+                    })
+                );
             }
         }
     }
@@ -102,8 +138,14 @@ mod tests {
         }
         assert_eq!(InputId::from_name("K20_"), None);
         assert_eq!(InputId(21).name(), "M2");
-        assert_eq!(serde_json::to_string(&InputId(28)).unwrap(), "\"ENC_R_PRESS\"");
-        assert_eq!(serde_json::from_str::<InputId>("\"K05\"").unwrap(), InputId(5));
+        assert_eq!(
+            serde_json::to_string(&InputId(28)).unwrap(),
+            "\"ENC_R_PRESS\""
+        );
+        assert_eq!(
+            serde_json::from_str::<InputId>("\"K05\"").unwrap(),
+            InputId(5)
+        );
         assert!(serde_json::from_str::<InputId>("\"nope\"").is_err());
     }
 }
