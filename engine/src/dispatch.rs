@@ -40,6 +40,10 @@ impl Executor for SystemExecutor {
             Action::Launch { program, args } => launch(program, args),
             Action::Open { target } => open(target),
             Action::Command { line } => command(line),
+            Action::Sound { .. }
+            | Action::StopSounds
+            | Action::SoundVolume { .. }
+            | Action::SoundMute => Err("soundboard non branchee".into()),
             Action::Macro { .. } | Action::Toggle { .. } => Err("action non unitaire".into()),
         };
         if let Err(e) = res {
@@ -232,6 +236,7 @@ mod tests {
         let cfg = Config {
             version: 1,
             timing: Timing::default(),
+            sound: Default::default(),
             profiles: vec![Profile {
                 id: 1,
                 name: "p".into(),

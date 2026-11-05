@@ -118,3 +118,51 @@ fn save_default_if_missing_writes_once() {
     assert_eq!(std::fs::read_to_string(&p).unwrap(), "x");
     std::fs::remove_dir_all(p.parent().unwrap()).unwrap();
 }
+
+const SOUND: &str = include_str!("fixtures/sound.json");
+
+#[test]
+fn old_config_without_sound_still_loads() {
+    assert_eq!(parse(GOOD).unwrap().sound, SoundSettings::default());
+}
+
+#[test]
+fn sound_fixture_parses() {
+    let c = parse(SOUND).unwrap();
+    assert_eq!(c.sound.mic_mode, MicMode::External);
+    assert_eq!(c.sound.sounds[0].volume, 80);
+    assert_eq!(c.sound.sounds[0].on_repeat, OnRepeat::Stop);
+    assert_eq!(c.sound.sounds[1].volume, 100);
+    assert_eq!(c.sound.sounds[1].on_repeat, OnRepeat::Restart);
+}
+
+#[test]
+fn rejects_bad_sound_settings() {
+    let set = |from: &str, to: &str| {
+        let t = SOUND.replace(from, to);
+        assert_ne!(t, SOUND);
+        invalid(&t);
+    };
+    set(r#""id":"clap""#, r#""id":"airhorn""#); // id en double
+    set(r#""id":"clap""#, r#""id":"""#);
+    set(r#""volume":80"#, r#""volume":101"#);
+    for f in [
+        "master_volume",
+        "monitor_volume",
+        "cable_volume",
+        "mic_gain",
+    ] {
+        set(r#""sound":{"#, &format!(r#""sound":{{"{f}":101,"#));
+    }
+    let act = |a: &str| SOUND.replace(r#"{"type":"StopSounds"}"#, a);
+    invalid(&act(r#"{"type":"SoundVolume","delta":101}"#));
+    assert!(parse(&act(r#"{"type":"SoundVolume","delta":-100}"#)).is_ok());
+    let ghost = r#"{"type":"Sound","id":"nope"}"#;
+    invalid(&act(ghost));
+    invalid(&act(&format!(
+        r#"{{"type":"Toggle","on":{ghost},"off":{{"type":"StopSounds"}}}}"#
+    )));
+    invalid(&act(&format!(
+        r#"{{"type":"Macro","steps":[{{"type":"Do","action":{ghost}}}]}}"#
+    )));
+}
