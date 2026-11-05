@@ -114,6 +114,15 @@ fn validate(c: &Config) -> Result<(), String> {
     if c.version != 1 {
         return Err(format!("version {} non supportee", c.version));
     }
+    // Borne haute : une duree enorme deborde `Instant + Duration`.
+    for (name, ms) in [
+        ("hold_ms", c.timing.hold_ms),
+        ("double_ms", c.timing.double_ms),
+    ] {
+        if !(50..=5000).contains(&ms) {
+            return Err(format!("{name} {ms} hors 50..=5000"));
+        }
+    }
     let mut ids = HashSet::new();
     for p in &c.profiles {
         if !(1..=8).contains(&p.id) {

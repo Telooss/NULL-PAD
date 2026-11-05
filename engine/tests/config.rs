@@ -18,6 +18,22 @@ fn default_roundtrips() {
 }
 
 #[test]
+fn rejects_timing_out_of_bounds() {
+    for f in ["hold_ms", "double_ms"] {
+        for bad in [49u64, 5001, u64::MAX] {
+            let mut v: serde_json::Value = serde_json::from_str(GOOD).unwrap();
+            v["timing"][f] = bad.into();
+            invalid(&v.to_string());
+        }
+        for ok in [50u64, 5000] {
+            let mut v: serde_json::Value = serde_json::from_str(GOOD).unwrap();
+            v["timing"][f] = ok.into();
+            assert!(parse(&v.to_string()).is_ok());
+        }
+    }
+}
+
+#[test]
 fn rejects_bad_tag() {
     invalid(&GOOD.replace("AB1", "ab"));
     invalid(&GOOD.replace("AB1", "abcd"));
