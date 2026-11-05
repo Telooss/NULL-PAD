@@ -34,7 +34,7 @@ const NAMES: [&str; 29] = [
     "ENC_R_PRESS",
 ];
 
-/// Entree physique du macropad, 0..=28.
+/// Entree physique du NULL/PAD, 0..=28.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct InputId(pub u8);
 

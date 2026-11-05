@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-pub const APP_DIR: &str = "macropad";
+pub const APP_DIR: &str = "NULL-PAD";
 
 pub fn config_path() -> PathBuf {
     dirs::config_dir()

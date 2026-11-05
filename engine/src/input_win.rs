@@ -1,4 +1,4 @@
-//! Source Raw Input : fenetre message-only qui recoit les rapports HID Consumer du macropad.
+//! Source Raw Input : fenetre message-only qui recoit les rapports HID Consumer du NULL/PAD.
 use crate::dispatch::Dispatcher;
 use crate::report::{parse_consumer_report, ReportTracker};
 use std::cell::RefCell;
@@ -158,7 +158,7 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM)
                 let dev = HANDLE(lparam.0 as _);
                 if wparam.0 as u32 == GIDC_REMOVAL {
                     if st.devices.remove(&(dev.0 as isize)) == Some(true) {
-                        tracing::warn!("macropad removed");
+                        tracing::warn!("NULL/PAD removed");
                         // Les Up de clear() sont ignores : device_lost remet les declencheurs a zero.
                         let _ = st.tracker.clear();
                         st.dispatcher.device_lost();
@@ -230,14 +230,14 @@ fn create_window() -> windows::core::Result<HWND> {
         let class = WNDCLASSW {
             lpfnWndProc: Some(wndproc),
             hInstance: hinst,
-            lpszClassName: w!("MacropadEngine"),
+            lpszClassName: w!("NullPadEngine"),
             ..Default::default()
         };
         RegisterClassW(&class);
         CreateWindowExW(
             Default::default(),
             class.lpszClassName,
-            w!("macropad engine"),
+            w!("NULL/PAD engine"),
             Default::default(),
             0,
             0,

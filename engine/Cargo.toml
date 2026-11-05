@@ -2,6 +2,11 @@
 name = "engine"
 version = "0.1.0"
 edition = "2021"
+description = "Moteur Windows du macropad NULL/PAD"
+
+[[bin]]
+name = "nullpad"
+path = "src/main.rs"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

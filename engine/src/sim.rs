@@ -1,4 +1,4 @@
-//! Mode simulation : lit des lignes sur stdin au lieu du macropad.
+//! Mode simulation : lit des lignes sur stdin au lieu du NULL/PAD.
 use crate::codes::{encode_action, encode_profile, InputId};
 use crate::dispatch::Dispatcher;
 use crate::report::Edge;

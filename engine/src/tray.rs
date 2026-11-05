@@ -1,6 +1,6 @@
 use crate::actions::launch;
 use crate::autostart::{is_autostart, set_autostart};
-use crate::paths::{config_path, APP_DIR};
+use crate::paths::config_path;
 use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
@@ -49,7 +49,7 @@ pub fn create_tray() -> Result<TrayIcon, String> {
     }));
     TrayIconBuilder::new()
         .with_menu(Box::new(menu))
-        .with_tooltip(APP_DIR)
+        .with_tooltip("NULL/PAD")
         .with_icon(icon())
         .build()
         .map_err(|e| e.to_string())
