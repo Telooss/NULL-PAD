@@ -8,6 +8,7 @@ use crate::report::Edge;
 use crate::triggers::{Fire, Triggers};
 use arc_swap::ArcSwap;
 use std::collections::HashMap;
+use std::panic::AssertUnwindSafe;
 use std::sync::mpsc::{channel, Sender};
 use std::sync::Arc;
 use std::thread;
@@ -47,6 +48,18 @@ impl Executor for SystemExecutor {
     }
 }
 
+fn run_steps(exec: &dyn Executor, steps: Vec<Step>) {
+    for s in steps {
+        match s {
+            Step::Wait { ms } => thread::sleep(Duration::from_millis(ms)),
+            Step::Do {
+                action: Action::Macro { steps },
+            } => run_steps(exec, steps),
+            Step::Do { action } => exec.run(&action),
+        }
+    }
+}
+
 pub struct Dispatcher {
     config: Arc<ArcSwap<Config>>,
     exec: Arc<dyn Executor>,
@@ -60,7 +73,14 @@ impl Dispatcher {
     pub fn new(config: Arc<ArcSwap<Config>>, exec: Arc<dyn Executor>) -> Self {
         let (worker, rx) = channel::<Action>();
         let e = exec.clone();
-        thread::spawn(move || rx.into_iter().for_each(|a| e.run(&a)));
+        thread::spawn(move || {
+            for a in rx {
+                // Une panique ne doit pas tuer le worker : sinon plus aucune action clavier.
+                if std::panic::catch_unwind(AssertUnwindSafe(|| e.run(&a))).is_err() {
+                    eprintln!("panique dans une action: {a:?}");
+                }
+            }
+        });
         let triggers = Triggers::new(config.load().timing);
         Self {
             config,
@@ -140,14 +160,7 @@ impl Dispatcher {
         match action {
             Action::Macro { steps } => {
                 let exec = self.exec.clone();
-                thread::spawn(move || {
-                    for s in steps {
-                        match s {
-                            Step::Wait { ms } => thread::sleep(Duration::from_millis(ms)),
-                            Step::Do { action } => exec.run(&action),
-                        }
-                    }
-                });
+                thread::spawn(move || run_steps(exec.as_ref(), steps));
             }
             Action::Launch { .. } | Action::Open { .. } | Action::Command { .. } => {
                 let exec = self.exec.clone();
@@ -290,6 +303,41 @@ mod tests {
         assert!(
             log[0].contains("\"on\"") && log[1].contains("\"off\"") && log[2].contains("\"on\"")
         );
+    }
+
+    #[test]
+    fn nested_macro_runs_inline() {
+        let inner = Action::Macro {
+            steps: vec![Step::Do { action: text("x") }],
+        };
+        let outer = Action::Macro {
+            steps: vec![Step::Do { action: inner }],
+        };
+        let (mut d, rec) = setup(vec![(0, outer)]);
+        d.on_edge(Edge::Down(encode_action(1, InputId(0))), Instant::now());
+        assert!(rec.wait_len(1));
+        assert!(rec.has("\"x\""));
+    }
+
+    struct PanicFirst(Rec, std::sync::atomic::AtomicBool);
+    impl Executor for PanicFirst {
+        fn run(&self, a: &Action) {
+            if !self.1.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                panic!("boom");
+            }
+            self.0.run(a);
+        }
+    }
+
+    #[test]
+    fn worker_survives_panic() {
+        let cfg = setup(vec![(0, text("a")), (1, text("b"))]).0.config.clone();
+        let ex = Arc::new(PanicFirst(Rec::default(), Default::default()));
+        let mut d = Dispatcher::new(cfg, ex.clone());
+        d.on_edge(Edge::Down(encode_action(1, InputId(0))), Instant::now());
+        d.on_edge(Edge::Down(encode_action(1, InputId(1))), Instant::now());
+        assert!(ex.0.wait_len(1));
+        assert!(ex.0.has("\"b\""));
     }
 
     #[test]
