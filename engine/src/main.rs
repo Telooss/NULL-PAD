@@ -9,6 +9,8 @@ use engine::sim::run_simulation;
 use engine::tray::create_tray;
 use engine::watch::watch_config;
 use std::sync::Arc;
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
+use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use windows::core::w;
@@ -38,14 +40,28 @@ fn main() {
         .unwrap_or_default()
         .join(APP_DIR)
         .join("logs");
-    tracing_subscriber::registry()
-        .with(
+    // Sans dossier de logs on continue sans fichier (la console reste en simulation).
+    let file_log = RollingFileAppender::builder()
+        .rotation(Rotation::DAILY)
+        .filename_prefix("engine.log")
+        .build(logs)
+        .ok()
+        .map(|w| {
             tracing_subscriber::fmt::layer()
                 .with_ansi(false)
-                .with_writer(tracing_appender::rolling::daily(logs, "engine.log")),
-        )
+                .with_writer(w)
+        });
+    tracing_subscriber::registry()
+        .with(LevelFilter::INFO)
+        .with(file_log)
         .with(simulate.then(tracing_subscriber::fmt::layer))
         .init();
+    // En release il n'y a pas de console : sans ce hook une panique disparait sans trace.
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        tracing::error!("panic: {info}");
+        default_hook(info);
+    }));
 
     // Instance unique (pas en simulation). Le handle reste ouvert jusqu'a la fin du processus.
     let _single = (!simulate).then(|| {
