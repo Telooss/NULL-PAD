@@ -47,7 +47,14 @@ thread_local! {
     static STATE: RefCell<Option<State>> = const { RefCell::new(None) };
 }
 
-fn matches(filter: DeviceFilter, dev: HANDLE) -> bool {
+enum Lookup {
+    Ours,
+    Other,
+    /// L'API a echoue : on ne le met pas en cache, on reessaiera.
+    Failed,
+}
+
+fn lookup(filter: DeviceFilter, dev: HANDLE) -> Lookup {
     let mut info = RID_DEVICE_INFO {
         cbSize: size_of::<RID_DEVICE_INFO>() as u32,
         ..Default::default()
@@ -61,18 +68,38 @@ fn matches(filter: DeviceFilter, dev: HANDLE) -> bool {
             &mut size,
         )
     };
-    n != u32::MAX
+    if n == u32::MAX {
+        return Lookup::Failed;
+    }
+    // L'union n'est valide en `hid` que pour un peripherique HID.
+    let ours = info.dwType == RIM_TYPEHID
         && unsafe {
             info.Anonymous.hid.dwVendorId == filter.vid as u32
                 && info.Anonymous.hid.dwProductId == filter.pid as u32
-        }
+        };
+    if ours {
+        Lookup::Ours
+    } else {
+        Lookup::Other
+    }
 }
 
 fn is_ours(st: &mut State, dev: HANDLE) -> bool {
-    let filter = st.filter;
-    *st.devices
-        .entry(dev.0 as isize)
-        .or_insert_with(|| matches(filter, dev))
+    let key = dev.0 as isize;
+    if let Some(&known) = st.devices.get(&key) {
+        return known;
+    }
+    match lookup(st.filter, dev) {
+        Lookup::Failed => {
+            tracing::warn!("GetRawInputDeviceInfoW a echoue");
+            false
+        }
+        l => {
+            let ours = matches!(l, Lookup::Ours);
+            st.devices.insert(key, ours);
+            ours
+        }
+    }
 }
 
 fn rearm_timer(hwnd: HWND, st: &State) {
@@ -105,7 +132,8 @@ fn on_wm_input(st: &mut State, lparam: LPARAM) {
     if got == u32::MAX || buf.len() < hdr + 8 {
         return;
     }
-    let header = unsafe { &*(buf.as_ptr() as *const RAWINPUTHEADER) };
+    // Le Vec<u8> n'est pas aligne pour RAWINPUTHEADER.
+    let header = unsafe { std::ptr::read_unaligned(buf.as_ptr() as *const RAWINPUTHEADER) };
     if header.dwType != RIM_TYPEHID.0 || !is_ours(st, header.hDevice) {
         return;
     }
@@ -145,8 +173,9 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM)
         Some(())
     });
     match handled {
-        Some(()) => LRESULT(0),
-        None => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
+        // La doc exige DefWindowProc pour WM_INPUT (nettoyage RIM_INPUT).
+        Some(()) if msg != WM_INPUT => LRESULT(0),
+        _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
     }
 }
 
@@ -171,7 +200,17 @@ pub fn run_raw_input(dispatcher: Dispatcher, filter: DeviceFilter) -> ! {
     }
     tracing::info!("raw input registered (page 0x0C)");
     let mut msg = MSG::default();
-    while unsafe { GetMessageW(&mut msg, None, 0, 0) }.0 > 0 {
+    loop {
+        let r = unsafe { GetMessageW(&mut msg, None, 0, 0) }.0;
+        if r < 0 {
+            tracing::error!(
+                "GetMessageW a echoue: {}",
+                windows::core::Error::from_thread()
+            );
+        }
+        if r <= 0 {
+            break;
+        }
         unsafe {
             let _ = TranslateMessage(&msg);
             DispatchMessageW(&msg);
