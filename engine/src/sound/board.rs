@@ -87,11 +87,17 @@ impl Soundboard {
         }
         let state = VoiceState::new();
         let (s, o) = (self.settings.load(), self.outputs.load());
+        let mut added = false;
         for (mixer, vol) in [(&o.monitor, s.monitor_volume), (&o.cable, s.cable_volume)] {
             if let (Some(m), true) = (mixer, vol > 0) {
                 let gain = loaded.volume * f32::from(vol) / 100.0;
                 m.add(Voice::new(&loaded.clip, gain, self.master.clone(), state.clone()));
+                added = true;
             }
+        }
+        if !added {
+            tracing::warn!("son '{id}' : aucune sortie audio ouverte (ou volumes a 0)");
+            return Err("aucune sortie audio ouverte".into());
         }
         voices.insert(id.to_string(), state);
         Ok(())
@@ -258,10 +264,11 @@ mod tests {
     }
 
     #[test]
-    fn no_outputs_is_ok() {
+    fn no_outputs_is_err_without_panic() {
         let b = Soundboard::new();
         load(&b, &settings(vec![def("none", 100, OnRepeat::Restart)]));
-        assert!(b.play("none").is_ok());
+        assert!(b.play("none").is_err());
+        assert!(b.voices.lock().unwrap().is_empty());
     }
 
     #[test]

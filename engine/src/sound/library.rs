@@ -12,6 +12,9 @@ use rodio::Source;
 use crate::sound::voice::Clip;
 
 const MAX_SECONDS: usize = 300;
+/// Plafond memoire fixe (5 min en 48 kHz stereo, ~115 Mo en f32) : un 7.1 a 192 kHz
+/// ne doit pas allouer des Go, quitte a etre refuse avant 5 min.
+const MAX_SAMPLES: usize = MAX_SECONDS * 48_000 * 2;
 
 pub struct Loaded {
     pub clip: Clip,
@@ -81,11 +84,10 @@ pub fn decode(path: &Path) -> Result<Clip, String> {
     let dec = rodio::Decoder::try_from(file).map_err(|e| e.to_string())?;
     let channels = dec.channels().get();
     let rate = dec.sample_rate().get();
-    let max = MAX_SECONDS * rate as usize * channels as usize;
     let mut samples = Vec::new();
     for s in dec {
-        if samples.len() >= max {
-            return Err(format!("plus de {} min", MAX_SECONDS / 60));
+        if samples.len() >= MAX_SAMPLES {
+            return Err(format!("plus de {} min (en 48 kHz stereo)", MAX_SECONDS / 60));
         }
         samples.push(s);
     }
@@ -155,9 +157,10 @@ mod tests {
     }
 
     #[test]
-    fn too_long_is_rejected() {
+    fn too_many_samples_is_rejected() {
         let p = tmp("long");
-        write_wav(&p, 8000, 1, 301 * 8000);
+        // 7.1 a 192 kHz : un echantillon de trop apres ~19 s (plafond = 5 min en 48 kHz stereo)
+        write_wav(&p, 192_000, 8, MAX_SAMPLES / 8 + 1);
         let lib = Library::build(&[def("long", &p)], &Library::empty());
         std::fs::remove_file(&p).ok();
         assert!(lib.get("long").is_none());

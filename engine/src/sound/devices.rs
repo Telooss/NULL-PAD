@@ -3,7 +3,7 @@
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use rodio::cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use rodio::cpal::{self, Device, Host, SampleFormat, Stream};
@@ -17,6 +17,7 @@ use crate::sound::mic::{mic_channel, push_frames};
 
 pub const CABLE_HINT: &str = "CABLE Input";
 const RETRY: Duration = Duration::from_secs(5);
+const REOPEN_GAP: Duration = Duration::from_secs(1); // un peripherique qui casse aussitot ne fait pas tourner le thread
 
 /// Index du premier nom contenant `wanted` (sinon `auto`), sans casse.
 /// Les deux absents : `None` (= peripherique par defaut).
@@ -45,9 +46,23 @@ fn all_open(s: &SoundSettings, monitor: bool, cable: bool, mic: bool) -> bool {
     monitor && (cable || !(app || s.cable_device.is_some())) && (mic || !app)
 }
 
+/// Flux en erreur : seul celui-la est rouvert.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Which {
+    Monitor,
+    Cable,
+    Mic,
+}
+
+/// Flux a fermer : [casque, VB-Cable, micro]. La MicSource vit dans le mixeur VB-Cable :
+/// VB-Cable perdu = micro rattache au nouveau mixeur.
+fn lost(w: Which) -> [bool; 3] {
+    [w == Which::Monitor, w == Which::Cable, w != Which::Monitor]
+}
+
 enum AudioCmd {
     Apply(SoundSettings),
-    StreamError,
+    StreamError(Which),
 }
 
 #[derive(Clone)]
@@ -82,8 +97,10 @@ fn run(board: Arc<Soundboard>, rx: Receiver<AudioCmd>, tx: Sender<AudioCmd>) {
     let mut cur: Option<SoundSettings> = None;
     let mut dev = Opened::default();
     let mut complete = true;
+    let mut last_lost: Option<Instant> = None;
     loop {
         let mut reset = false;
+        let mut gone = [false; 3];
         match rx.recv_timeout(RETRY) {
             Ok(first) => {
                 for cmd in std::iter::once(first).chain(rx.try_iter()) {
@@ -92,7 +109,11 @@ fn run(board: Arc<Soundboard>, rx: Receiver<AudioCmd>, tx: Sender<AudioCmd>) {
                             reset |= cur.as_ref().is_none_or(|c| devices_changed(c, &s));
                             cur = Some(s);
                         }
-                        AudioCmd::StreamError => reset = true,
+                        AudioCmd::StreamError(w) => {
+                            for (g, l) in gone.iter_mut().zip(lost(w)) {
+                                *g |= l;
+                            }
+                        }
                     }
                 }
             }
@@ -103,6 +124,23 @@ fn run(board: Arc<Soundboard>, rx: Receiver<AudioCmd>, tx: Sender<AudioCmd>) {
         if reset {
             board.set_outputs(Outputs::default());
             dev = Opened::default(); // ferme tout avant de rouvrir
+            complete = !wants_audio(s) || dev.fill(s, &board, &tx, true);
+        } else if gone.contains(&true) {
+            let [m, c, mic] = gone;
+            if m {
+                dev.monitor = None;
+            }
+            if c {
+                dev.cable = None;
+            }
+            if mic {
+                dev.mic = None;
+            }
+            dev.publish(&board); // plus de mixeur mort pendant l'attente
+            if let Some(wait) = last_lost.and_then(|t| REOPEN_GAP.checked_sub(t.elapsed())) {
+                thread::sleep(wait);
+            }
+            last_lost = Some(Instant::now());
             complete = !wants_audio(s) || dev.fill(s, &board, &tx, true);
         } else if !complete {
             complete = dev.fill(s, &board, &tx, false);
@@ -124,12 +162,12 @@ impl Opened {
         let host = cpal::default_host();
         if self.monitor.is_none() {
             let d = find(&host, false, s.monitor_device.as_deref(), None, "casque", loud);
-            self.monitor = d.and_then(|d| open_sink(d, "casque", tx, loud));
+            self.monitor = d.and_then(|d| open_sink(d, "casque", Which::Monitor, tx, loud));
         }
         if self.cable.is_none() {
             self.mic = None; // la MicSource vit dans le mixeur VB-Cable
             let d = find(&host, false, s.cable_device.as_deref(), Some(CABLE_HINT), "VB-Cable", loud);
-            self.cable = d.and_then(|d| open_sink(d, "VB-Cable", tx, loud));
+            self.cable = d.and_then(|d| open_sink(d, "VB-Cable", Which::Cable, tx, loud));
         }
         if s.mic_mode == MicMode::App && self.mic.is_none() {
             match &self.cable {
@@ -137,11 +175,15 @@ impl Opened {
                 None => note(loud, false, "micro via l'appli : pas de VB-Cable, pas de micro"),
             }
         }
+        self.publish(board);
+        all_open(s, self.monitor.is_some(), self.cable.is_some(), self.mic.is_some())
+    }
+
+    fn publish(&self, board: &Soundboard) {
         board.set_outputs(Outputs {
             monitor: self.monitor.as_ref().map(|m| m.mixer().clone()),
             cable: self.cable.as_ref().map(|m| m.mixer().clone()),
         });
-        all_open(s, self.monitor.is_some(), self.cable.is_some(), self.mic.is_some())
     }
 }
 
@@ -177,22 +219,31 @@ fn find(host: &Host, input: bool, wanted: Option<&str>, auto: Option<&str>, labe
     found
 }
 
-/// Rappel d'erreur des flux : peripherique perdu ou flux invalide -> reouverture.
-fn on_error(tx: Sender<AudioCmd>) -> impl FnMut(cpal::Error) + Clone + Send + 'static {
+/// Rappel d'erreur des flux : peripherique perdu ou flux invalide -> reouverture de ce flux.
+fn on_error(tx: Sender<AudioCmd>, which: Which) -> impl FnMut(cpal::Error) + Clone + Send + 'static {
     move |e: cpal::Error| match e.kind() {
-        cpal::ErrorKind::DeviceNotAvailable | cpal::ErrorKind::StreamInvalidated => {
-            error!("flux audio perdu : {e}");
-            let _ = tx.send(AudioCmd::StreamError);
+        cpal::ErrorKind::DeviceNotAvailable => {
+            error!("flux audio perdu ({which:?}) : {e}");
+            let _ = tx.send(AudioCmd::StreamError(which));
+        }
+        cpal::ErrorKind::StreamInvalidated => {
+            // cas normal : sortie par defaut de Windows changee
+            warn!("flux audio invalide ({which:?}) : {e}");
+            let _ = tx.send(AudioCmd::StreamError(which));
         }
         cpal::ErrorKind::Xrun => debug!("flux audio : {e}"), // un par craquement : trop bavard en warn
         _ => warn!("flux audio : {e}"),
     }
 }
 
-fn open_sink(dev: Device, label: &str, tx: &Sender<AudioCmd>, loud: bool) -> Option<MixerDeviceSink> {
+fn open_sink(dev: Device, label: &str, which: Which, tx: &Sender<AudioCmd>, loud: bool) -> Option<MixerDeviceSink> {
     let name = dev_name(&dev);
-    let res = DeviceSinkBuilder::from_device(dev)
-        .and_then(|b| b.with_error_callback(on_error(tx.clone())).open_sink_or_fallback());
+    // from_device impose ~50 ms de tampon (2048 trames a 48 kHz) : on garde la periode WASAPI (~10 ms)
+    let res = DeviceSinkBuilder::from_device(dev).and_then(|b| {
+        b.with_buffer_size(cpal::BufferSize::Default)
+            .with_error_callback(on_error(tx.clone(), which))
+            .open_sink_or_fallback()
+    });
     match res {
         Ok(mut sink) => {
             sink.log_on_drop(false);
@@ -233,7 +284,7 @@ fn open_mic(
     let (ch, rate) = (cfg.channels(), cfg.sample_rate());
     let (mut prod, src) = mic_channel(ch, rate, board.clone());
     let stream = dev
-        .build_input_stream(cfg.config(), move |data: &[f32], _: &_| push_frames(&mut prod, data, ch), on_error(tx.clone()), None)
+        .build_input_stream(cfg.config(), move |data: &[f32], _: &_| push_frames(&mut prod, data, ch), on_error(tx.clone(), Which::Mic), None)
         .map_err(|e| fail(&e))
         .ok()?;
     stream.play().map_err(|e| fail(&e)).ok()?;
@@ -323,6 +374,13 @@ mod tests {
         assert!(!all_open(&app, true, false, false));
         assert!(!all_open(&app, true, true, false));
         assert!(all_open(&app, true, true, true));
+    }
+
+    #[test]
+    fn lost_stream_closes_only_itself_and_mic_follows_cable() {
+        assert_eq!(lost(Which::Monitor), [true, false, false]);
+        assert_eq!(lost(Which::Cable), [false, true, true]);
+        assert_eq!(lost(Which::Mic), [false, false, true]);
     }
 
     /// Ouvre les vrais peripheriques (aucun son joue). Lancer a la main :

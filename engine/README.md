@@ -113,6 +113,9 @@ Types d'action :
 - `Media` : `PlayPause`, `Next`, `Prev` ou `Stop`.
 - `Volume` / `MicVolume` : change le volume de sortie / du micro de `delta` points (en %). `VolumeMute` / `MicMute` : bascule le mutisme.
 - `Toggle` : alterne entre `on` et `off` à chaque déclenchement (le premier déclenchement exécute `on`).
+- `Sound` : joue le son `id` de la section `sound` (voir Soundboard).
+- `StopSounds` : coupe tous les sons en cours.
+- `SoundVolume` : change le volume général de la soundboard de `delta` points (en %). `SoundMute` : bascule son mutisme.
 
 ## Soundboard
 
@@ -133,7 +136,8 @@ Le moteur joue des sons (mp3, wav, ogg, flac, 5 minutes au plus) dans le casque 
 - `*_device` : `null` = périphérique par défaut (casque, micro) ou détection automatique de VB-Cable (sortie dont le nom contient `CABLE Input`) ; sinon une partie du nom, sans tenir compte de la casse.
 - Volumes et gain : entiers de 0 à 100. Volume final d'un son = `master_volume` × `volume`/100 × volume de la sortie/100. `monitor_volume: 0` = ne pas s'entendre.
 - `on_repeat` : `Restart` (coupe et relance) ou `Stop` (un rappui pendant la lecture l'arrête).
-- Un fichier manquant ou illisible n'invalide pas la config : le son est sauté et signalé dans les logs.
+- Un fichier manquant ou illisible n'invalide pas la config : le son est sauté et signalé dans les logs. Au-delà de 5 minutes en 48 kHz stéréo (plafond mémoire : moins pour un fichier multicanal ou à haute fréquence), le son est aussi sauté.
+- Latence estimée d'un son (appui → casque) : 10–20 ms, la période WASAPI de la sortie. Estimation à confirmer à l'oreille.
 - Actions : `{ "type": "Sound", "id": "airhorn" }`, `{ "type": "StopSounds" }`, `{ "type": "SoundVolume", "delta": 5 }` (volume général, agit en direct sur les sons en cours), `{ "type": "SoundMute" }`.
 
 VB-Cable : l'installer, puis choisir « CABLE Output » comme micro dans le jeu, Discord ou OBS. Si VB-Cable est absent, l'icône de la zone de notification propose de l'installer (état lu au démarrage).
@@ -141,7 +145,7 @@ VB-Cable : l'installer, puis choisir « CABLE Output » comme micro dans le jeu,
 Mode micro (`mic_mode`) :
 
 - `External` (défaut) : le logiciel ne touche pas à la voix. Pour que les autres entendent aussi ta voix dans « CABLE Output », brancher le vrai micro sur VB-Cable avec « Écouter ce périphérique » de Windows ou avec l'interface audio. `MicVolume` / `MicMute` règlent le micro Windows, comme avant.
-- `App` : le moteur mélange lui-même le micro et les sons vers VB-Cable. Latence d'environ 25–40 ms sur la voix ; micro muet si le moteur est fermé ; ne pas activer en plus « Écouter ce périphérique », sinon le micro est doublé. `MicVolume` / `MicMute` règlent alors le gain et la sourdine du micro de l'appli, et `master_volume` s'applique aussi à lui.
+- `App` : le moteur mélange lui-même le micro et les sons vers VB-Cable. Latence estimée sur la voix : 35–60 ms (période d'entrée + 15–50 ms de tampon + période de sortie), à confirmer à l'oreille ; micro muet si le moteur est fermé ; ne pas activer en plus « Écouter ce périphérique », sinon le micro est doublé. `MicVolume` / `MicMute` règlent alors le gain et la sourdine du micro de l'appli, et `master_volume` s'applique aussi à lui.
 
 Le volume réglé à la molette (général ou gain micro) vit en mémoire ; la valeur du fichier s'applique au démarrage et chaque fois qu'elle change dans le fichier.
 
@@ -198,4 +202,6 @@ Le test automatique (`cargo test -p engine`, dont `tests/e2e.rs`) couvre appui, 
 - [ ] Changer la sortie par défaut de Windows
 - [ ] VB-Cable absent : l'icône propose de l'installer
 - [ ] Mode `App` : voix audible dans « CABLE Output », molette droite = gain, clic = sourdine, latence ressentie
+- [ ] Latence ressentie d'un son (appui → son dans le casque)
+- [ ] Le PC se met-il encore en veille tout seul quand le moteur tourne avec au moins un son configuré ? (`powercfg /requests` doit ne pas lister le moteur)
 - [ ] Config rechargée à l'enregistrement ; une config cassée est ignorée (voir les logs) et l'ancienne reste active

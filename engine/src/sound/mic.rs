@@ -72,6 +72,10 @@ impl Iterator for MicSource {
     fn next(&mut self) -> Option<f32> {
         if self.pos == 0 {
             // debut de trame : seul endroit ou l'on amorce, rattrape et lit les volumes
+            // flux micro ferme (micro rouvert seul) : la source quitte le mixeur VB-Cable
+            if self.cons.is_abandoned() {
+                return None;
+            }
             let n = self.cons.slots();
             if !self.primed {
                 if n < self.target {
@@ -209,9 +213,18 @@ mod tests {
     }
 
     #[test]
-    fn never_returns_none() {
-        let (p, mut s, _b) = setup();
-        drop(p);
+    fn silence_while_stream_alive() {
+        let (_p, mut s, _b) = setup();
         assert!(read(&mut s, 1000).iter().all(|x| *x == 0.0));
+    }
+
+    #[test]
+    fn ends_at_frame_boundary_when_stream_dropped() {
+        let (mut p, mut s, _b) = setup();
+        push_ms(&mut p, 20);
+        assert_eq!(read(&mut s, 1), [1.0]);
+        drop(p);
+        assert_eq!(s.next(), Some(-1.0)); // fin de trame
+        assert_eq!(s.next(), None);
     }
 }
