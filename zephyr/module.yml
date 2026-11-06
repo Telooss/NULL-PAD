@@ -1,0 +1,6 @@
+name: null-pad-zmk
+build:
+  cmake: firmware/module
+  kconfig: firmware/module/Kconfig
+  settings:
+    dts_root: firmware/module
