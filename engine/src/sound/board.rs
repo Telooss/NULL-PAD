@@ -150,10 +150,18 @@ mod tests {
         SoundSettings { sounds, ..SoundSettings::default() }
     }
 
+    /// Applique les reglages puis supprime les wav (deja decodes en memoire).
+    fn load(b: &Soundboard, s: &SoundSettings) {
+        b.apply(s);
+        for d in &s.sounds {
+            std::fs::remove_file(&d.path).ok();
+        }
+    }
+
     /// Soundboard avec deux sorties factices + leurs sources.
     fn setup(s: &SoundSettings) -> (Arc<Soundboard>, MixerSource, MixerSource) {
         let b = Soundboard::new();
-        b.apply(s);
+        load(&b, s);
         let ((m, ms), (c, cs)) = (mix(), mix());
         b.set_outputs(Outputs { monitor: Some(m), cable: Some(c) });
         (b, ms, cs)
@@ -200,14 +208,19 @@ mod tests {
     #[test]
     fn restart_keeps_one_voice() {
         let (b, _ms, mut cs) = setup(&settings(vec![def("rst", 100, OnRepeat::Restart)]));
+        let mut states = Vec::new();
         for _ in 0..3 {
             b.play("rst").unwrap();
+            states.push(b.voices.lock().unwrap()["rst"].clone());
         }
-        let out = pull(&mut cs, 4000); // > fondu (5 ms)
-        let max = 1100.0 / 32768.0; // plus grand echantillon d'une seule voix
-        let last = *out.last().unwrap();
-        assert!(last != 0.0 && last <= max, "last {last}");
-        assert_eq!(b.voices.lock().unwrap().len(), 1);
+        // les anciennes sont arretees, la derniere est celle de la table
+        assert!(!states[0].is_playing() && !states[1].is_playing());
+        assert!(states[2].is_playing());
+        assert!(Arc::ptr_eq(&states[2], &b.voices.lock().unwrap()["rst"]));
+        // apres les fondus il ne reste que la 3e voix (toutes ont demarre a l'echantillon 0)
+        let out = pull(&mut cs, 4000);
+        let expected = b.library.load().get("rst").unwrap().clip.samples[3999];
+        assert!(near(out[3999], expected), "{} vs {expected}", out[3999]);
     }
 
     #[test]
@@ -242,7 +255,7 @@ mod tests {
     #[test]
     fn no_outputs_is_ok() {
         let b = Soundboard::new();
-        b.apply(&settings(vec![def("none", 100, OnRepeat::Restart)]));
+        load(&b, &settings(vec![def("none", 100, OnRepeat::Restart)]));
         assert!(b.play("none").is_ok());
     }
 
@@ -277,23 +290,21 @@ mod tests {
     fn master_scales_playing_sound() {
         let (b, mut ms, mut cs) = setup(&settings(vec![def("mas", 100, OnRepeat::Restart)]));
         b.play("mas").unwrap();
-        let v = v0(&b, "mas");
-        assert!(near(first_nonzero(&mut ms), v));
-        assert!(near(first_nonzero(&mut cs), v));
-        b.change_master(-50);
-        // trames suivantes : on lit l'echantillon de position connue via le clip
-        let (m, c) = (pull(&mut ms, 4), pull(&mut cs, 4));
         let clip = b.library.load().get("mas").unwrap().clip.clone();
-        for out in [m, c] {
-            let last = out[3];
-            let idx = clip.samples.iter().position(|s| near(*s * 0.5, last)).expect("moitie");
-            assert!(idx < 10, "idx {idx}");
-        }
+        let s = |i: usize| clip.samples[i];
+        // le premier echantillon non nul est l'indice 0
+        assert!(near(first_nonzero(&mut ms), s(0)));
+        assert!(near(first_nonzero(&mut cs), s(0)));
+        b.change_master(-50);
+        // indices 1..=4 ; le volume change a la trame suivante (indice 4)
+        assert!(near(pull(&mut ms, 4)[3], s(4) * 0.5));
+        assert!(near(pull(&mut cs, 4)[3], s(4) * 0.5));
         assert!(b.toggle_master_mute());
-        // la sourdine joue a la trame suivante : on regarde la fin du bloc
+        // indices 5..=8
         assert_eq!(pull(&mut ms, 4)[3], 0.0);
         assert_eq!(pull(&mut cs, 4)[3], 0.0);
         assert!(!b.toggle_master_mute());
-        assert!(pull(&mut cs, 4)[3] != 0.0);
+        // indices 9..=12
+        assert!(near(pull(&mut cs, 4)[3], s(12) * 0.5));
     }
 }
