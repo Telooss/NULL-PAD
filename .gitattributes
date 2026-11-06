@@ -1,0 +1,2 @@
+*.sh text eol=lf
+firmware/** text eol=lf

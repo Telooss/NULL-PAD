@@ -1,0 +1,188 @@
+#include <behaviors.dtsi>
+#include <behaviors/np_sensor_keys.dtsi>
+#include <dt-bindings/zmk/keys.h>
+#include <dt-bindings/zmk/bt.h>
+#include "null_pad_codes.h"
+
+/ {
+    macros {
+        np_p1: np_p1 {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            bindings = <&macro_tap &to 0 &kp ANN(1)>;
+        };
+        np_p2: np_p2 {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            bindings = <&macro_tap &to 1 &kp ANN(2)>;
+        };
+        np_p3: np_p3 {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            bindings = <&macro_tap &to 2 &kp ANN(3)>;
+        };
+        // p4-p8 : sur aucune touche, visibles dans Studio (le snippet Studio garde tous les comportements)
+        np_p4: np_p4 {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            bindings = <&macro_tap &to 3 &kp ANN(4)>;
+        };
+        np_p5: np_p5 {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            bindings = <&macro_tap &to 4 &kp ANN(5)>;
+        };
+        np_p6: np_p6 {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            bindings = <&macro_tap &to 5 &kp ANN(6)>;
+        };
+        np_p7: np_p7 {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            bindings = <&macro_tap &to 6 &kp ANN(7)>;
+        };
+        np_p8: np_p8 {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            bindings = <&macro_tap &to 7 &kp ANN(8)>;
+        };
+        np_00: np_00 {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            bindings = <&macro_tap &kp KP_N0 &kp KP_N0>;
+        };
+    };
+
+    combos {
+        compatible = "zmk,combos";
+        combo_studio_unlock {
+            key-positions = <IN_M1 IN_M3>;
+            bindings = <&studio_unlock>;
+        };
+    };
+
+    keymap {
+        compatible = "zmk,keymap";
+
+        layer_def {
+            display-name = "DEF";
+            bindings = <
+                &kp KP_NUMLOCK &kp KP_SLASH &kp KP_MULTIPLY &kp KP_MINUS
+                &kp KP_N7 &kp KP_N8 &kp KP_N9 &kp KP_PLUS
+                &kp KP_N4 &kp KP_N5 &kp KP_N6 &kp ACT(1, IN_K11)
+                &kp KP_N1 &kp KP_N2 &kp KP_N3 &kp KP_ENTER
+                &kp KP_N0 &np_00 &kp KP_DOT &kp ACT(1, IN_K19)
+                &np_p1 &np_p2 &np_p3
+                &kp C_VOL_UP &kp C_VOL_DN &kp C_MUTE
+                &kp ACT(1, IN_ENC_R_CW) &kp ACT(1, IN_ENC_R_CCW) &kp ACT(1, IN_ENC_R_PRESS)
+            >;
+            sensor-bindings = <&np_enc IN_ENC_L_CW IN_ENC_L_CCW &np_enc IN_ENC_R_CW IN_ENC_R_CCW>;
+        };
+
+        layer_p02 {
+            display-name = "P02";
+            bindings = <
+                &kp ACT(2, IN_K00) &kp ACT(2, IN_K01) &kp ACT(2, IN_K02) &kp ACT(2, IN_K03)
+                &kp ACT(2, IN_K04) &kp ACT(2, IN_K05) &kp ACT(2, IN_K06) &kp ACT(2, IN_K07)
+                &kp ACT(2, IN_K08) &kp ACT(2, IN_K09) &kp ACT(2, IN_K10) &kp ACT(2, IN_K11)
+                &kp ACT(2, IN_K12) &kp ACT(2, IN_K13) &kp ACT(2, IN_K14) &kp ACT(2, IN_K15)
+                &kp ACT(2, IN_K16) &kp ACT(2, IN_K17) &kp ACT(2, IN_K18) &kp ACT(2, IN_K19)
+                &np_p1 &np_p2 &np_p3
+                &kp C_VOL_UP &kp C_VOL_DN &kp C_MUTE
+                &kp ACT(2, IN_ENC_R_CW) &kp ACT(2, IN_ENC_R_CCW) &kp ACT(2, IN_ENC_R_PRESS)
+            >;
+            sensor-bindings = <&np_enc IN_ENC_L_CW IN_ENC_L_CCW &np_enc IN_ENC_R_CW IN_ENC_R_CCW>;
+        };
+
+        layer_p03 {
+            display-name = "P03";
+            bindings = <
+                &kp ACT(3, IN_K00) &kp ACT(3, IN_K01) &kp ACT(3, IN_K02) &kp ACT(3, IN_K03)
+                &kp ACT(3, IN_K04) &kp ACT(3, IN_K05) &kp ACT(3, IN_K06) &kp ACT(3, IN_K07)
+                &kp ACT(3, IN_K08) &kp ACT(3, IN_K09) &kp ACT(3, IN_K10) &kp ACT(3, IN_K11)
+                &kp ACT(3, IN_K12) &kp ACT(3, IN_K13) &kp ACT(3, IN_K14) &kp ACT(3, IN_K15)
+                &kp ACT(3, IN_K16) &kp ACT(3, IN_K17) &kp ACT(3, IN_K18) &kp ACT(3, IN_K19)
+                &np_p1 &np_p2 &np_p3
+                &kp C_VOL_UP &kp C_VOL_DN &kp C_MUTE
+                &kp ACT(3, IN_ENC_R_CW) &kp ACT(3, IN_ENC_R_CCW) &kp ACT(3, IN_ENC_R_PRESS)
+            >;
+            sensor-bindings = <&np_enc IN_ENC_L_CW IN_ENC_L_CCW &np_enc IN_ENC_R_CW IN_ENC_R_CCW>;
+        };
+
+        layer_p04 {
+            display-name = "P04";
+            bindings = <
+                &kp ACT(4, IN_K00) &kp ACT(4, IN_K01) &kp ACT(4, IN_K02) &kp ACT(4, IN_K03)
+                &kp ACT(4, IN_K04) &kp ACT(4, IN_K05) &kp ACT(4, IN_K06) &kp ACT(4, IN_K07)
+                &kp ACT(4, IN_K08) &kp ACT(4, IN_K09) &kp ACT(4, IN_K10) &kp ACT(4, IN_K11)
+                &kp ACT(4, IN_K12) &kp ACT(4, IN_K13) &kp ACT(4, IN_K14) &kp ACT(4, IN_K15)
+                &kp ACT(4, IN_K16) &kp ACT(4, IN_K17) &kp ACT(4, IN_K18) &kp ACT(4, IN_K19)
+                &np_p1 &np_p2 &np_p3
+                &kp C_VOL_UP &kp C_VOL_DN &kp C_MUTE
+                &kp ACT(4, IN_ENC_R_CW) &kp ACT(4, IN_ENC_R_CCW) &kp ACT(4, IN_ENC_R_PRESS)
+            >;
+            sensor-bindings = <&np_enc IN_ENC_L_CW IN_ENC_L_CCW &np_enc IN_ENC_R_CW IN_ENC_R_CCW>;
+        };
+
+        layer_p05 {
+            display-name = "P05";
+            bindings = <
+                &kp ACT(5, IN_K00) &kp ACT(5, IN_K01) &kp ACT(5, IN_K02) &kp ACT(5, IN_K03)
+                &kp ACT(5, IN_K04) &kp ACT(5, IN_K05) &kp ACT(5, IN_K06) &kp ACT(5, IN_K07)
+                &kp ACT(5, IN_K08) &kp ACT(5, IN_K09) &kp ACT(5, IN_K10) &kp ACT(5, IN_K11)
+                &kp ACT(5, IN_K12) &kp ACT(5, IN_K13) &kp ACT(5, IN_K14) &kp ACT(5, IN_K15)
+                &kp ACT(5, IN_K16) &kp ACT(5, IN_K17) &kp ACT(5, IN_K18) &kp ACT(5, IN_K19)
+                &np_p1 &np_p2 &np_p3
+                &kp C_VOL_UP &kp C_VOL_DN &kp C_MUTE
+                &kp ACT(5, IN_ENC_R_CW) &kp ACT(5, IN_ENC_R_CCW) &kp ACT(5, IN_ENC_R_PRESS)
+            >;
+            sensor-bindings = <&np_enc IN_ENC_L_CW IN_ENC_L_CCW &np_enc IN_ENC_R_CW IN_ENC_R_CCW>;
+        };
+
+        layer_p06 {
+            display-name = "P06";
+            bindings = <
+                &kp ACT(6, IN_K00) &kp ACT(6, IN_K01) &kp ACT(6, IN_K02) &kp ACT(6, IN_K03)
+                &kp ACT(6, IN_K04) &kp ACT(6, IN_K05) &kp ACT(6, IN_K06) &kp ACT(6, IN_K07)
+                &kp ACT(6, IN_K08) &kp ACT(6, IN_K09) &kp ACT(6, IN_K10) &kp ACT(6, IN_K11)
+                &kp ACT(6, IN_K12) &kp ACT(6, IN_K13) &kp ACT(6, IN_K14) &kp ACT(6, IN_K15)
+                &kp ACT(6, IN_K16) &kp ACT(6, IN_K17) &kp ACT(6, IN_K18) &kp ACT(6, IN_K19)
+                &np_p1 &np_p2 &np_p3
+                &kp C_VOL_UP &kp C_VOL_DN &kp C_MUTE
+                &kp ACT(6, IN_ENC_R_CW) &kp ACT(6, IN_ENC_R_CCW) &kp ACT(6, IN_ENC_R_PRESS)
+            >;
+            sensor-bindings = <&np_enc IN_ENC_L_CW IN_ENC_L_CCW &np_enc IN_ENC_R_CW IN_ENC_R_CCW>;
+        };
+
+        layer_p07 {
+            display-name = "P07";
+            bindings = <
+                &kp ACT(7, IN_K00) &kp ACT(7, IN_K01) &kp ACT(7, IN_K02) &kp ACT(7, IN_K03)
+                &kp ACT(7, IN_K04) &kp ACT(7, IN_K05) &kp ACT(7, IN_K06) &kp ACT(7, IN_K07)
+                &kp ACT(7, IN_K08) &kp ACT(7, IN_K09) &kp ACT(7, IN_K10) &kp ACT(7, IN_K11)
+                &kp ACT(7, IN_K12) &kp ACT(7, IN_K13) &kp ACT(7, IN_K14) &kp ACT(7, IN_K15)
+                &kp ACT(7, IN_K16) &kp ACT(7, IN_K17) &kp ACT(7, IN_K18) &kp ACT(7, IN_K19)
+                &np_p1 &np_p2 &np_p3
+                &kp C_VOL_UP &kp C_VOL_DN &kp C_MUTE
+                &kp ACT(7, IN_ENC_R_CW) &kp ACT(7, IN_ENC_R_CCW) &kp ACT(7, IN_ENC_R_PRESS)
+            >;
+            sensor-bindings = <&np_enc IN_ENC_L_CW IN_ENC_L_CCW &np_enc IN_ENC_R_CW IN_ENC_R_CCW>;
+        };
+
+        layer_p08 {
+            display-name = "P08";
+            bindings = <
+                &kp ACT(8, IN_K00) &kp ACT(8, IN_K01) &kp ACT(8, IN_K02) &kp ACT(8, IN_K03)
+                &kp ACT(8, IN_K04) &kp ACT(8, IN_K05) &kp ACT(8, IN_K06) &kp ACT(8, IN_K07)
+                &kp ACT(8, IN_K08) &kp ACT(8, IN_K09) &kp ACT(8, IN_K10) &kp ACT(8, IN_K11)
+                &kp ACT(8, IN_K12) &kp ACT(8, IN_K13) &kp ACT(8, IN_K14) &kp ACT(8, IN_K15)
+                &kp ACT(8, IN_K16) &kp ACT(8, IN_K17) &kp ACT(8, IN_K18) &kp ACT(8, IN_K19)
+                &np_p1 &np_p2 &np_p3
+                &kp C_VOL_UP &kp C_VOL_DN &kp C_MUTE
+                &kp ACT(8, IN_ENC_R_CW) &kp ACT(8, IN_ENC_R_CCW) &kp ACT(8, IN_ENC_R_PRESS)
+            >;
+            sensor-bindings = <&np_enc IN_ENC_L_CW IN_ENC_L_CCW &np_enc IN_ENC_R_CW IN_ENC_R_CCW>;
+        };
+    };
+};

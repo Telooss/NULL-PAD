@@ -1,0 +1,12 @@
+manifest:
+  remotes:
+    - name: zmkfirmware
+      url-base: https://github.com/zmkfirmware
+  projects:
+    - name: zmk
+      remote: zmkfirmware
+      revision: v0.3.0
+      import: app/west.yml
+  self:
+    # Dossier de config = firmware/ : west init -l prend son parent comme espace de travail.
+    path: firmware

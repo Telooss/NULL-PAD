@@ -1,0 +1,112 @@
+#include <dt-bindings/zmk/matrix_transform.h>
+#include <physical_layouts.dtsi>
+
+/* D16 = P0.10 est une broche NFC. */
+&uicr {
+    nfct-pins-as-gpios;
+};
+
+/ {
+    chosen {
+        zmk,kscan = &kscan;
+        zmk,physical-layout = &null_pad_layout;
+    };
+
+    kscan: kscan {
+        compatible = "zmk,kscan-gpio-matrix";
+        wakeup-source;
+        diode-direction = "col2row";
+        debounce-press-ms = <1>;
+        debounce-release-ms = <5>;
+        row-gpios
+            = <&pro_micro 5 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
+            , <&pro_micro 6 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
+            , <&pro_micro 7 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
+            , <&pro_micro 8 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
+            , <&pro_micro 9 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
+            ;
+        col-gpios
+            = <&pro_micro 19 GPIO_ACTIVE_HIGH>
+            , <&pro_micro 18 GPIO_ACTIVE_HIGH>
+            , <&pro_micro 15 GPIO_ACTIVE_HIGH>
+            , <&pro_micro 14 GPIO_ACTIVE_HIGH>
+            , <&pro_micro 16 GPIO_ACTIVE_HIGH>
+            ;
+    };
+
+    /* Ordre = positions = InputId du moteur. Rangee 5 : molettes cachees, jamais scannee. */
+    default_transform: matrix_transform {
+        compatible = "zmk,matrix-transform";
+        rows = <6>;
+        columns = <5>;
+        map = <
+            RC(0,0) RC(0,1) RC(0,2) RC(0,3)
+            RC(1,0) RC(1,1) RC(1,2) RC(1,3)
+            RC(2,0) RC(2,1) RC(2,2) RC(2,3)
+            RC(3,0) RC(3,1) RC(3,2) RC(3,3)
+            RC(4,0) RC(4,1) RC(4,2) RC(4,3)
+            RC(2,4) RC(3,4) RC(4,4)
+            RC(5,0) RC(5,1) RC(0,4)
+            RC(5,2) RC(5,3) RC(1,4)
+        >;
+    };
+
+    null_pad_layout: null_pad_layout {
+        compatible = "zmk,physical-layout";
+        display-name = "NULL/PAD";
+        transform = <&default_transform>;
+        keys  //                     w   h    x    y     rot   rx   ry
+            = <&key_physical_attrs 100 100    0  100       0    0    0>
+            , <&key_physical_attrs 100 100  100  100       0    0    0>
+            , <&key_physical_attrs 100 100  200  100       0    0    0>
+            , <&key_physical_attrs 100 100  300  100       0    0    0>
+            , <&key_physical_attrs 100 100    0  200       0    0    0>
+            , <&key_physical_attrs 100 100  100  200       0    0    0>
+            , <&key_physical_attrs 100 100  200  200       0    0    0>
+            , <&key_physical_attrs 100 100  300  200       0    0    0>
+            , <&key_physical_attrs 100 100    0  300       0    0    0>
+            , <&key_physical_attrs 100 100  100  300       0    0    0>
+            , <&key_physical_attrs 100 100  200  300       0    0    0>
+            , <&key_physical_attrs 100 100  300  300       0    0    0>
+            , <&key_physical_attrs 100 100    0  400       0    0    0>
+            , <&key_physical_attrs 100 100  100  400       0    0    0>
+            , <&key_physical_attrs 100 100  200  400       0    0    0>
+            , <&key_physical_attrs 100 100  300  400       0    0    0>
+            , <&key_physical_attrs 100 100    0  500       0    0    0>
+            , <&key_physical_attrs 100 100  100  500       0    0    0>
+            , <&key_physical_attrs 100 100  200  500       0    0    0>
+            , <&key_physical_attrs 100 100  300  500       0    0    0>
+            , <&key_physical_attrs 100 100   50  600       0    0    0>  // M1
+            , <&key_physical_attrs 100 100  150  600       0    0    0>  // M2
+            , <&key_physical_attrs 100 100  250  600       0    0    0>  // M3
+            , <&key_physical_attrs  60 100  120    0       0    0    0>  // ENC_L_CW
+            , <&key_physical_attrs  60 100    0    0       0    0    0>  // ENC_L_CCW
+            , <&key_physical_attrs  60 100   60    0       0    0    0>  // clic ENC1
+            , <&key_physical_attrs  60 100   340    0       0    0    0>  // ENC_R_CW
+            , <&key_physical_attrs  60 100   220    0       0    0    0>  // ENC_R_CCW
+            , <&key_physical_attrs  60 100   280    0       0    0    0>  // clic ENC2
+            ;
+    };
+
+    left_encoder: left_encoder {
+        compatible = "alps,ec11";
+        a-gpios = <&pro_micro 0 (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
+        b-gpios = <&pro_micro 4 (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
+        steps = <96>;
+        status = "okay";
+    };
+
+    right_encoder: right_encoder {
+        compatible = "alps,ec11";
+        a-gpios = <&pro_micro 21 (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
+        b-gpios = <&pro_micro 20 (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
+        steps = <96>;
+        status = "okay";
+    };
+
+    sensors: sensors {
+        compatible = "zmk,keymap-sensors";
+        sensors = <&left_encoder &right_encoder>;
+        triggers-per-rotation = <24>;
+    };
+};

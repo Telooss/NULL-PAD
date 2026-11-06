@@ -1,0 +1,10 @@
+/* Usage : sensor-bindings = <&np_enc POS_HORAIRE POS_ANTIHORAIRE>; */
+
+/ {
+    behaviors {
+        /omit-if-no-ref/ np_enc: np_sensor_keys {
+            compatible = "zmk,behavior-np-sensor-keys";
+            #sensor-binding-cells = <2>;
+        };
+    };
+};

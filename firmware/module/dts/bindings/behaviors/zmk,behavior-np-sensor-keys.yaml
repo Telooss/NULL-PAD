@@ -1,0 +1,13 @@
+description: Molette -> appui puis relachement d'une position de touche cachee, par cran
+
+compatible: "zmk,behavior-np-sensor-keys"
+
+properties:
+  "#sensor-binding-cells":
+    type: int
+    required: true
+    const: 2
+
+sensor-binding-cells:
+  - param1
+  - param2

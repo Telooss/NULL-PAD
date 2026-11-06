@@ -1,0 +1,22 @@
+name: Firmware ZMK
+
+on:
+  push:
+    paths:
+      - "firmware/**"
+      - "zephyr/**"
+      - ".github/workflows/firmware.yml"
+  pull_request:
+    paths:
+      - "firmware/**"
+      - "zephyr/**"
+      - ".github/workflows/firmware.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    uses: zmkfirmware/zmk/.github/workflows/build-user-config.yml@v0.3.0
+    with:
+      # Un seul niveau : le workflow fait `mkdir` sans -p et `west init -l` prend le parent comme espace.
+      config_path: firmware
+      build_matrix_path: firmware/build.yaml

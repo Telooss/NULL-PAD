@@ -47,6 +47,7 @@ Deux morceaux :
 - Nombre de profils borné par les couches réservées dans le firmware (ex. 8, au choix du builder selon la mémoire).
 - Anti-rebond ZMK raccourci par rapport aux 5 ms par défaut, valeur à régler sur le vrai PCB.
 - Build par GitHub Actions (déjà décidé dans `PROJECT.md`).
+- **Révision au plan firmware (2026-11-06)** : les molettes passent par des touches cachées (contournement détaillé dans `docs/superpowers/plans/2026-11-06-firmware.md`) ; le build se fait en local sous WSL (`firmware/build-local.sh`), les Actions restant possibles.
 
 ### 3.2 Logiciel PC (Windows)
 - **Moteur en Rust**, natif, en arrière-plan (icône dans la barre des tâches, démarre avec Windows). Hook clavier bas niveau : il intercepte les codes uniques, **les bloque** pour qu'aucune autre appli ne les voie, et exécute l'action du profil actif. Aucune attente sur l'interface.
