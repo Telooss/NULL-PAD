@@ -114,6 +114,47 @@ Types d'action :
 - `Volume` / `MicVolume` : change le volume de sortie / du micro de `delta` points (en %). `VolumeMute` / `MicMute` : bascule le mutisme.
 - `Toggle` : alterne entre `on` et `off` à chaque déclenchement (le premier déclenchement exécute `on`).
 
+## Soundboard
+
+Le moteur joue des sons (mp3, wav, ogg, flac, 5 minutes au plus) dans le casque et dans un micro virtuel, [VB-Cable](https://vb-audio.com/Cable/). Section `sound` de la config (optionnelle, `version` reste 1) :
+
+```json
+"sound": {
+  "master_volume": 100,
+  "monitor_device": null,  "monitor_volume": 100,
+  "cable_device": null,    "cable_volume": 100,
+  "mic_mode": "External",  "mic_device": null, "mic_gain": 100,
+  "sounds": [
+    { "id": "airhorn", "path": "C:\sons\airhorn.mp3", "volume": 80, "on_repeat": "Restart" }
+  ]
+}
+```
+
+- `*_device` : `null` = périphérique par défaut (casque, micro) ou détection automatique de VB-Cable (sortie dont le nom contient `CABLE Input`) ; sinon une partie du nom, sans tenir compte de la casse.
+- Volumes et gain : entiers de 0 à 100. Volume final d'un son = `master_volume` × `volume`/100 × volume de la sortie/100. `monitor_volume: 0` = ne pas s'entendre.
+- `on_repeat` : `Restart` (coupe et relance) ou `Stop` (un rappui pendant la lecture l'arrête).
+- Un fichier manquant ou illisible n'invalide pas la config : le son est sauté et signalé dans les logs.
+- Actions : `{ "type": "Sound", "id": "airhorn" }`, `{ "type": "StopSounds" }`, `{ "type": "SoundVolume", "delta": 5 }` (volume général, agit en direct sur les sons en cours), `{ "type": "SoundMute" }`.
+
+VB-Cable : l'installer, puis choisir « CABLE Output » comme micro dans le jeu, Discord ou OBS. Si VB-Cable est absent, l'icône de la zone de notification propose de l'installer (état lu au démarrage).
+
+Mode micro (`mic_mode`) :
+
+- `External` (défaut) : le logiciel ne touche pas à la voix. Pour que les autres entendent aussi ta voix dans « CABLE Output », brancher le vrai micro sur VB-Cable avec « Écouter ce périphérique » de Windows ou avec l'interface audio. `MicVolume` / `MicMute` règlent le micro Windows, comme avant.
+- `App` : le moteur mélange lui-même le micro et les sons vers VB-Cable. Latence d'environ 25–40 ms sur la voix ; micro muet si le moteur est fermé ; ne pas activer en plus « Écouter ce périphérique », sinon le micro est doublé. `MicVolume` / `MicMute` règlent alors le gain et la sourdine du micro de l'appli, et `master_volume` s'applique aussi à lui.
+
+Le volume réglé à la molette (général ou gain micro) vit en mémoire ; la valeur du fichier s'applique au démarrage et chaque fois qu'elle change dans le fichier.
+
+## Molettes
+
+Par défaut, la molette gauche règle le volume Windows et la droite le micro. Pour piloter le volume de la soundboard avec une molette, la lier à `SoundVolume` :
+
+```json
+{ "input": "ENC_L_CW",    "trigger": "Press", "action": { "type": "SoundVolume", "delta": 5 } },
+{ "input": "ENC_L_CCW",   "trigger": "Press", "action": { "type": "SoundVolume", "delta": -5 } },
+{ "input": "ENC_L_PRESS", "trigger": "Press", "action": { "type": "SoundMute" } }
+```
+
 ## Table des codes
 
 Les entrées :
@@ -148,4 +189,13 @@ Le test automatique (`cargo test -p engine`, dont `tests/e2e.rs`) couvre appui, 
 - [ ] Icône de la zone de notification et son menu : « Ouvrir le dossier de config », « Démarrer avec Windows » (case cochée/décochée), « Quitter »
 - [ ] Démarrage avec Windows : actif après le premier lancement ; le moteur se relance à la prochaine ouverture de session
 - [ ] Instance unique : lancer `nullpad.exe` une 2e fois ne crée pas de 2e icône
+- [ ] Soundboard : un son s'entend dans le casque
+- [ ] `SoundVolume` sur une molette baisse un son en cours (casque et VB-Cable) ; en mode `App`, la voix aussi
+- [ ] Le son s'entend dans « CABLE Output » (enregistreur de sons Windows ou Discord)
+- [ ] Rappui sur un son : `Restart` le relance, `Stop` l'arrête
+- [ ] `StopSounds` coupe tous les sons
+- [ ] Débrancher le casque pendant un son, puis le rebrancher
+- [ ] Changer la sortie par défaut de Windows
+- [ ] VB-Cable absent : l'icône propose de l'installer
+- [ ] Mode `App` : voix audible dans « CABLE Output », molette droite = gain, clic = sourdine, latence ressentie
 - [ ] Config rechargée à l'enregistrement ; une config cassée est ignorée (voir les logs) et l'ancienne reste active

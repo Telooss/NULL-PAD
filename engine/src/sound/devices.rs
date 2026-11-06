@@ -50,6 +50,7 @@ enum AudioCmd {
     StreamError,
 }
 
+#[derive(Clone)]
 pub struct AudioHandle {
     tx: Sender<AudioCmd>,
 }

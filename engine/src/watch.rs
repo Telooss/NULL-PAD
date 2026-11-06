@@ -11,6 +11,7 @@ const DEBOUNCE: Duration = Duration::from_millis(150);
 pub fn watch_config(
     path: PathBuf,
     target: Arc<ArcSwap<Config>>,
+    on_reload: impl Fn(&Config) + Send + 'static,
 ) -> notify::Result<RecommendedWatcher> {
     let name = path.file_name().map(|n| n.to_owned());
     let dir = path
@@ -32,6 +33,7 @@ pub fn watch_config(
             while rx.recv_timeout(DEBOUNCE).is_ok() {}
             match load(&path) {
                 Ok(c) => {
+                    on_reload(&c);
                     target.store(Arc::new(c));
                     tracing::info!("config reloaded");
                 }
