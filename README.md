@@ -22,7 +22,7 @@ Un **profil** = une couche du firmware. Dans chaque profil, une touche est soit 
 | **Moteur** : raccourcis, texte, macros, lancer un programme, ouvrir un lien, commande PowerShell, touches média, volume, micro. Appui, appui long, double appui, bascule. Config rechargée à chaud. | ✅ fait, à valider sur le vrai pad |
 | Soundboard intégrée qui joue dans le micro (remplace Soundpad) : sons mp3 / wav / ogg / flac vers le casque et VB-Cable, volume général, micro optionnel. | ✅ fait, à valider sur le vrai pad |
 | OBS (websocket) et Ableton (MIDI virtuel) | à venir |
-| Firmware ZMK (profils, codes action, tag sur l'écran) | à venir |
+| Firmware ZMK (profils, codes action, tag sur l'écran) | ✅ compile (local, WSL), à valider sur le vrai pad |
 | Écriture dans le pad depuis l'appli (ZMK Studio RPC) | à venir |
 | Interface (rendu 3D du pad, esthétique terminal hacktiviste Y2K, violet) | à venir |
 
@@ -44,6 +44,7 @@ Config et journaux : `%APPDATA%\NULL-PAD\`.
 
 ```
 engine/                         moteur Rust (arrière-plan, Raw Input, actions)
+firmware/                       firmware ZMK du pad (config, shield, build local, README)
 docs/superpowers/specs/         conception du logiciel (intention, architecture, direction artistique)
 docs/superpowers/plans/         plans d'implémentation et suivi
 ```
