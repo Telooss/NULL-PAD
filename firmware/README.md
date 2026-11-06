@@ -10,13 +10,13 @@ Firmware [ZMK](https://zmk.dev) **v0.3.0** pour le NULL/PAD (nice!nano v2, 4×5 
 wsl -e bash firmware/build-local.sh
 ```
 
-Le résultat est `firmware\out\null_pad.uf2`. Le script copie le dépôt dans `~/np/repo` (côté WSL), récupère ZMK et Zephyr avec west (premier passage long, ensuite rapide), compile et recopie le `.uf2`. Il peut être relancé autant de fois que nécessaire.
+Le résultat est `firmware\out\null_pad.uf2`. Le script copie le dépôt dans `~/np` (`src` et `ws`) (côté WSL), récupère ZMK et Zephyr avec west (premier passage long, ensuite rapide), compile et recopie le `.uf2`. Il peut être relancé autant de fois que nécessaire.
 
 **Installation unique de la toolchain** (dans WSL Ubuntu) :
 
 ```bash
 sudo apt update && sudo apt install -y git cmake ninja-build gperf ccache dfu-util \
-  device-tree-compiler python3-dev python3-venv xz-utils file make gcc g++ protobuf-compiler rsync
+  device-tree-compiler python3-dev python3-venv xz-utils file make gcc g++ protobuf-compiler rsync wget
 python3 -m venv ~/zmk-venv && source ~/zmk-venv/bin/activate
 pip install west "setuptools<81" protobuf grpcio-tools
 cd ~ && wget https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_linux-x86_64_minimal.tar.xz
