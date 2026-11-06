@@ -7,6 +7,7 @@ pub mod input_win;
 pub mod paths;
 pub mod report;
 pub mod sim;
+pub mod sound;
 pub mod tray;
 pub mod triggers;
 pub mod watch;

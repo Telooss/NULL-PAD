@@ -11,6 +11,65 @@ pub struct Config {
     pub version: u32,
     pub timing: Timing,
     pub profiles: Vec<Profile>,
+    #[serde(default)]
+    pub sound: SoundSettings,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(default)]
+pub struct SoundSettings {
+    pub master_volume: u8,
+    pub monitor_device: Option<String>,
+    pub monitor_volume: u8,
+    pub cable_device: Option<String>,
+    pub cable_volume: u8,
+    pub mic_mode: MicMode,
+    pub mic_device: Option<String>,
+    pub mic_gain: u8,
+    pub sounds: Vec<SoundDef>,
+}
+
+impl Default for SoundSettings {
+    fn default() -> Self {
+        Self {
+            master_volume: 100,
+            monitor_device: None,
+            monitor_volume: 100,
+            cable_device: None,
+            cable_volume: 100,
+            mic_mode: MicMode::External,
+            mic_device: None,
+            mic_gain: 100,
+            sounds: Vec::new(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MicMode {
+    External,
+    App,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OnRepeat {
+    #[default]
+    Restart,
+    Stop,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct SoundDef {
+    pub id: String,
+    pub path: String,
+    #[serde(default = "full_volume")]
+    pub volume: u8,
+    #[serde(default)]
+    pub on_repeat: OnRepeat,
+}
+
+fn full_volume() -> u8 {
+    100
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -43,6 +102,10 @@ pub enum Action {
     MicVolume { delta: i8 },
     MicMute,
     Toggle { on: Box<Action>, off: Box<Action> },
+    Sound { id: String },
+    StopSounds,
+    SoundVolume { delta: i8 },
+    SoundMute,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -91,19 +154,29 @@ impl From<serde_json::Error> for ConfigError {
     }
 }
 
-fn check_action(a: &Action, nested: bool, in_macro: bool) -> Result<(), String> {
+fn check_action(
+    a: &Action,
+    nested: bool,
+    in_macro: bool,
+    sounds: &HashSet<&str>,
+) -> Result<(), String> {
     match a {
-        Action::Volume { delta } | Action::MicVolume { delta } if !(-100..=100).contains(delta) => {
+        Action::Sound { id } if !sounds.contains(id.as_str()) => {
+            Err(format!("son {id:?} absent de sound.sounds"))
+        }
+        Action::Volume { delta } | Action::MicVolume { delta } | Action::SoundVolume { delta }
+            if !(-100..=100).contains(delta) =>
+        {
             Err(format!("delta {delta} hors -100..=100"))
         }
         Action::Toggle { .. } if nested => Err("Toggle imbrique".into()),
         Action::Toggle { .. } if in_macro => Err("Toggle dans une Macro".into()),
         Action::Toggle { on, off } => {
-            check_action(on, true, in_macro)?;
-            check_action(off, true, in_macro)
+            check_action(on, true, in_macro, sounds)?;
+            check_action(off, true, in_macro, sounds)
         }
         Action::Macro { steps } => steps.iter().try_for_each(|s| match s {
-            Step::Do { action } => check_action(action, nested, true),
+            Step::Do { action } => check_action(action, nested, true, sounds),
             Step::Wait { .. } => Ok(()),
         }),
         _ => Ok(()),
@@ -121,6 +194,32 @@ fn validate(c: &Config) -> Result<(), String> {
     ] {
         if !(50..=5000).contains(&ms) {
             return Err(format!("{name} {ms} hors 50..=5000"));
+        }
+    }
+    let s = &c.sound;
+    for (name, v) in [
+        ("master_volume", s.master_volume),
+        ("monitor_volume", s.monitor_volume),
+        ("cable_volume", s.cable_volume),
+        ("mic_gain", s.mic_gain),
+    ] {
+        if v > 100 {
+            return Err(format!("{name} {v} hors 0..=100"));
+        }
+    }
+    let mut sound_ids = HashSet::new();
+    for d in &s.sounds {
+        if d.id.is_empty() {
+            return Err("id de son vide".into());
+        }
+        if d.volume > 100 {
+            return Err(format!(
+                "volume {} du son {:?} hors 0..=100",
+                d.volume, d.id
+            ));
+        }
+        if !sound_ids.insert(d.id.as_str()) {
+            return Err(format!("duplicate son {:?}", d.id));
         }
     }
     let mut ids = HashSet::new();
@@ -145,7 +244,7 @@ fn validate(c: &Config) -> Result<(), String> {
                     p.id
                 ));
             }
-            check_action(&b.action, false, false)?;
+            check_action(&b.action, false, false, &sound_ids)?;
         }
     }
     Ok(())
@@ -170,6 +269,7 @@ pub fn default_config() -> Config {
     Config {
         version: 1,
         timing: Timing::default(),
+        sound: SoundSettings::default(),
         profiles: vec![Profile {
             id: 1,
             name: "Default".into(),

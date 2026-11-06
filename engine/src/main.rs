@@ -6,6 +6,8 @@ use engine::dispatch::{Dispatcher, SystemExecutor};
 use engine::input_win::{run_raw_input, DeviceFilter};
 use engine::paths::{config_path, APP_DIR};
 use engine::sim::run_simulation;
+use engine::sound::board::Soundboard;
+use engine::sound::devices::{cable_present, start_audio};
 use engine::tray::create_tray;
 use engine::watch::watch_config;
 use std::sync::Arc;
@@ -82,21 +84,30 @@ fn main() {
             tracing::error!("demarrage auto non active: {e}");
         }
     }
+    let board = Soundboard::new();
+    let audio = start_audio(board.clone());
     let config = load(&path).unwrap_or_else(|e| {
         tracing::error!("config invalide, config par defaut en memoire: {e}");
         default_config()
     });
+    board.apply(&config.sound);
+    audio.apply(&config.sound);
     let config = Arc::new(ArcSwap::from_pointee(config));
+    let (b, a) = (board.clone(), audio.clone());
     // Garde le watcher en vie jusqu'a la fin du programme.
-    let _watcher = watch_config(path.clone(), config.clone())
-        .map_err(|e| tracing::error!("surveillance de la config impossible: {e}"))
-        .ok();
-    let dispatcher = Dispatcher::new(config, Arc::new(SystemExecutor));
+    let _watcher = watch_config(path.clone(), config.clone(), move |c| {
+        b.apply(&c.sound);
+        a.apply(&c.sound);
+    })
+    .map_err(|e| tracing::error!("surveillance de la config impossible: {e}"))
+    .ok();
+    let dispatcher = Dispatcher::new(config, Arc::new(SystemExecutor { sound: board }));
     if simulate {
         run_simulation(dispatcher);
     } else {
         // Cree ici : la boucle de messages de run_raw_input pompe aussi ceux de l'icone.
-        let _tray = create_tray().map_err(|e| tracing::error!("icone non creee: {e}"));
+        let _tray =
+            create_tray(!cable_present()).map_err(|e| tracing::error!("icone non creee: {e}"));
         run_raw_input(dispatcher, DeviceFilter::default());
     }
 }

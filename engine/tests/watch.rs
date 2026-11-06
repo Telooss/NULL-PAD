@@ -2,6 +2,7 @@ use arc_swap::ArcSwap;
 use engine::config::{default_config, load, Config};
 use engine::watch::watch_config;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -12,13 +13,23 @@ fn json(tag: &str) -> String {
 }
 
 fn setup(name: &str) -> (PathBuf, Arc<ArcSwap<Config>>, impl Drop) {
+    let (path, target, w, _) = setup_count(name);
+    (path, target, w)
+}
+
+fn setup_count(name: &str) -> (PathBuf, Arc<ArcSwap<Config>>, impl Drop, Arc<AtomicUsize>) {
     let dir = std::env::temp_dir().join(format!("macropad-watch-{name}-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("config.json");
     std::fs::write(&path, json("AAA")).unwrap();
     let target = Arc::new(ArcSwap::from_pointee(load(&path).unwrap()));
-    let w = watch_config(path.clone(), target.clone()).unwrap();
-    (path, target, w)
+    let count = Arc::new(AtomicUsize::new(0));
+    let c = count.clone();
+    let w = watch_config(path.clone(), target.clone(), move |_| {
+        c.fetch_add(1, Ordering::SeqCst);
+    })
+    .unwrap();
+    (path, target, w, count)
 }
 
 fn wait_tag(t: &ArcSwap<Config>, tag: &str) -> bool {
@@ -56,4 +67,16 @@ fn invalid_then_fixed() {
     assert_eq!(t.load().profiles[0].tag, "AAA");
     std::fs::write(&path, json("CCC")).unwrap();
     assert!(wait_tag(&t, "CCC"));
+}
+
+#[test]
+fn on_reload_called_only_for_valid() {
+    let (path, t, _w, n) = setup_count("reload");
+    std::fs::write(&path, json("BBB")).unwrap();
+    assert!(wait_tag(&t, "BBB"));
+    assert_eq!(n.load(Ordering::SeqCst), 1);
+    let full = json("CCC");
+    std::fs::write(&path, &full[..full.len() / 2]).unwrap();
+    std::thread::sleep(Duration::from_millis(600));
+    assert_eq!(n.load(Ordering::SeqCst), 1);
 }

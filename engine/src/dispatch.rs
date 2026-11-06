@@ -5,6 +5,7 @@ use crate::actions::launch::{command, launch, open};
 use crate::codes::{decode, Code, InputId};
 use crate::config::{Action, Config, Step};
 use crate::report::Edge;
+use crate::sound::board::Soundboard;
 use crate::triggers::{Fire, Triggers};
 use arc_swap::ArcSwap;
 use std::collections::HashMap;
@@ -19,7 +20,9 @@ pub trait Executor: Send + Sync {
     fn run(&self, action: &Action);
 }
 
-pub struct SystemExecutor;
+pub struct SystemExecutor {
+    pub sound: Arc<Soundboard>,
+}
 
 impl Executor for SystemExecutor {
     fn run(&self, action: &Action) {
@@ -35,11 +38,32 @@ impl Executor for SystemExecutor {
             }
             Action::Volume { delta } => change_volume(Endpoint::Output, *delta).map(drop),
             Action::VolumeMute => toggle_mute(Endpoint::Output).map(drop),
+            Action::MicVolume { delta } if self.sound.mic_via_app() => {
+                tracing::debug!("gain micro: {}", self.sound.change_mic_gain(*delta));
+                Ok(())
+            }
+            Action::MicMute if self.sound.mic_via_app() => {
+                tracing::debug!("micro coupe: {}", self.sound.toggle_mic_mute());
+                Ok(())
+            }
             Action::MicVolume { delta } => change_volume(Endpoint::Mic, *delta).map(drop),
             Action::MicMute => toggle_mute(Endpoint::Mic).map(drop),
             Action::Launch { program, args } => launch(program, args),
             Action::Open { target } => open(target),
             Action::Command { line } => command(line),
+            Action::Sound { id } => self.sound.play(id),
+            Action::StopSounds => {
+                self.sound.stop_all();
+                Ok(())
+            }
+            Action::SoundVolume { delta } => {
+                tracing::debug!("volume soundboard: {}", self.sound.change_master(*delta));
+                Ok(())
+            }
+            Action::SoundMute => {
+                tracing::debug!("soundboard coupee: {}", self.sound.toggle_master_mute());
+                Ok(())
+            }
             Action::Macro { .. } | Action::Toggle { .. } => Err("action non unitaire".into()),
         };
         if let Err(e) = res {
@@ -232,6 +256,7 @@ mod tests {
         let cfg = Config {
             version: 1,
             timing: Timing::default(),
+            sound: Default::default(),
             profiles: vec![Profile {
                 id: 1,
                 name: "p".into(),
@@ -357,6 +382,31 @@ mod tests {
         let t0 = Instant::now();
         d.on_edge(Edge::Down(encode_action(1, InputId(0))), t0);
         assert_eq!(d.next_deadline(), Some(t0 + Duration::from_millis(1000)));
+    }
+
+    #[test]
+    fn sound_actions_go_through_the_worker() {
+        let acts = [
+            Action::Sound { id: "a".into() },
+            Action::StopSounds,
+            Action::SoundVolume { delta: 5 },
+            Action::SoundMute,
+        ];
+        let (mut d, rec) = setup(
+            acts.iter()
+                .cloned()
+                .enumerate()
+                .map(|(i, a)| (i as u8, a))
+                .collect(),
+        );
+        for i in 0..4 {
+            d.on_edge(Edge::Down(encode_action(1, InputId(i))), Instant::now());
+        }
+        assert!(rec.wait_len(4));
+        assert_eq!(
+            rec.log(),
+            acts.iter().map(|a| format!("{a:?}")).collect::<Vec<_>>()
+        );
     }
 
     #[test]

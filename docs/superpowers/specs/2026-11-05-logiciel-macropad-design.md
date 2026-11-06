@@ -95,6 +95,7 @@ Défauts : **gauche = volume général**, **droite = niveau du micro**, clic = m
   - **Mode « via l'appli »** : le logiciel capte le micro et le mélange aux sons dans VB-Cable. Contrôle total du mélange ; la molette droite règle ce gain. Coût : ~10–30 ms en WASAPI partagé (le mode basse latence est un plus, pas une promesse), et micro muet si le logiciel est fermé — l'interface le dit clairement quand on choisit ce mode.
 - Audio WASAPI ; latence de lecture des sons la plus basse possible.
 - Options : volume par son, « stop tous les sons », comportement au rappui (relancer ou couper).
+- **Volume de la soundboard** (Alan, 2026-11-05) : un réglage de tout ce que la soundboard sort, assignable à une molette ou une touche ; en mode « via l'appli », il règle aussi le micro mélangé. Alan reste en mode « externe » : pas de délai sur sa voix.
 - VB-Cable s'installe à part (gratuit). Si absent, l'appli le détecte et explique comment l'installer.
 
 ## 7. Direction artistique (décidée avec Alan)

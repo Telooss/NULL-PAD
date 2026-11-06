@@ -21,13 +21,19 @@ fn icon() -> Icon {
 }
 
 /// A creer sur le thread qui pompe les messages Windows ; garder la valeur en vie.
-pub fn create_tray() -> Result<TrayIcon, String> {
+pub fn create_tray(cable_missing: bool) -> Result<TrayIcon, String> {
     let open = MenuItem::new("Ouvrir le dossier de config", true, None);
     let auto = CheckMenuItem::new("Démarrer avec Windows", true, is_autostart(), None);
     let quit = MenuItem::new("Quitter", true, None);
+    let cable = MenuItem::new("VB-Cable absent : l'installer…", true, None);
     let menu = Menu::new();
-    menu.append_items(&[&open, &auto, &quit])
+    menu.append_items(&[&open, &auto])
         .map_err(|e| e.to_string())?;
+    if cable_missing {
+        menu.append(&cable).map_err(|e| e.to_string())?;
+    }
+    menu.append(&quit).map_err(|e| e.to_string())?;
+    let cable_id = cable.id().clone();
     let (open_id, auto_id, quit_id) = (open.id().clone(), auto.id().clone(), quit.id().clone());
     MenuEvent::set_event_handler(Some(move |e: MenuEvent| {
         if e.id == quit_id {
@@ -39,6 +45,10 @@ pub fn create_tray() -> Result<TrayIcon, String> {
                 if let Err(err) = launch::open(&dir.to_string_lossy()) {
                     tracing::error!("ouverture du dossier impossible: {err}");
                 }
+            }
+        } else if e.id == cable_id {
+            if let Err(err) = launch::open("https://vb-audio.com/Cable/") {
+                tracing::error!("ouverture de la page VB-Cable impossible: {err}");
             }
         } else if e.id == auto_id {
             // La case se coche seule au clic ; shortcut: pas de resynchro si l'ecriture echoue.

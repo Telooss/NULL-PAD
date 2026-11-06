@@ -1,0 +1,7 @@
+{"version":1,"timing":{"hold_ms":300,"double_ms":250},
+"profiles":[{"id":1,"name":"P","tag":"SND","bindings":[
+{"input":"K00","trigger":"Press","action":{"type":"Sound","id":"airhorn"}},
+{"input":"K01","trigger":"Press","action":{"type":"StopSounds"}}]}],
+"sound":{"sounds":[
+{"id":"airhorn","path":"C:\\sons\\airhorn.mp3","volume":80,"on_repeat":"Stop"},
+{"id":"clap","path":"C:\\sons\\clap.wav"}]}}
