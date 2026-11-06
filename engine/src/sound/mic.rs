@@ -50,6 +50,15 @@ pub fn mic_channel(channels: u16, rate: u32, board: Arc<Soundboard>) -> (Produce
     (prod, src)
 }
 
+/// Cote producteur : n'ecrit que des trames entieres, jette le reste, ne bloque jamais.
+pub fn push_frames(prod: &mut Producer<f32>, data: &[f32], channels: u16) {
+    let ch = channels as usize;
+    let n = prod.slots().min(data.len()) / ch * ch;
+    for &x in &data[..n] {
+        let _ = prod.push(x);
+    }
+}
+
 impl MicSource {
     #[cfg(test)]
     fn queued(&self) -> usize {
@@ -70,7 +79,8 @@ impl Iterator for MicSource {
                 }
                 self.primed = true;
             }
-            if n == 0 {
+            // vide ou trame partielle : on attend une trame entiere
+            if n < self.channels.get() as usize {
                 self.primed = false;
                 return Some(0.0);
             }
@@ -82,7 +92,7 @@ impl Iterator for MicSource {
             }
             self.frame_mul = self.board.mic_gain() * self.master.get();
         }
-        // vide en milieu de trame (producteur coupe net) : silence
+        // trame entiere garantie au debut de trame (n >= channels)
         let s = self.cons.pop().unwrap_or(0.0);
         self.pos = (self.pos + 1) % self.channels.get() as usize;
         Some(s * self.frame_mul)
@@ -175,6 +185,27 @@ mod tests {
         assert!(!b.toggle_mic_mute());
         b.change_master(-50);
         assert_eq!(read(&mut s, 2), [0.25, -0.25]);
+    }
+
+    #[test]
+    fn partial_frame_keeps_channel_phase() {
+        let (mut p, mut s, _b) = setup();
+        push_ms(&mut p, 20);
+        read(&mut s, 2); // amorce
+        let left = s.queued();
+        read(&mut s, left); // vide le tampon
+        p.push(1.0).unwrap(); // L seul : trame partielle
+        assert_eq!(read(&mut s, 2), [0.0, 0.0]);
+        p.push(-1.0).unwrap();
+        push_ms(&mut p, 20);
+        assert_eq!(read(&mut s, 4), [1.0, -1.0, 1.0, -1.0]);
+    }
+
+    #[test]
+    fn push_frames_writes_whole_frames_only() {
+        let (mut p, _c) = RingBuffer::new(3);
+        push_frames(&mut p, &[1.0, -1.0, 1.0, -1.0], 2);
+        assert_eq!(p.slots(), 1);
     }
 
     #[test]
