@@ -125,7 +125,7 @@ Le moteur joue des sons (mp3, wav, ogg, flac, 5 minutes au plus) dans le casque 
   "cable_device": null,    "cable_volume": 100,
   "mic_mode": "External",  "mic_device": null, "mic_gain": 100,
   "sounds": [
-    { "id": "airhorn", "path": "C:\sons\airhorn.mp3", "volume": 80, "on_repeat": "Restart" }
+    { "id": "airhorn", "path": "C:\\sons\\airhorn.mp3", "volume": 80, "on_repeat": "Restart" }
   ]
 }
 ```

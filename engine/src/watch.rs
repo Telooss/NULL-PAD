@@ -33,6 +33,7 @@ pub fn watch_config(
             while rx.recv_timeout(DEBOUNCE).is_ok() {}
             match load(&path) {
                 Ok(c) => {
+                    // Avant le store : la bibliotheque de sons est chargee avant qu'une liaison Sound neuve ne devienne active.
                     on_reload(&c);
                     target.store(Arc::new(c));
                     tracing::info!("config reloaded");
