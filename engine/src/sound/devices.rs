@@ -178,11 +178,13 @@ fn find(host: &Host, input: bool, wanted: Option<&str>, auto: Option<&str>, labe
 
 /// Rappel d'erreur des flux : peripherique perdu ou flux invalide -> reouverture.
 fn on_error(tx: Sender<AudioCmd>) -> impl FnMut(cpal::Error) + Clone + Send + 'static {
-    move |e: cpal::Error| {
-        if matches!(e.kind(), cpal::ErrorKind::DeviceNotAvailable | cpal::ErrorKind::StreamInvalidated) {
+    move |e: cpal::Error| match e.kind() {
+        cpal::ErrorKind::DeviceNotAvailable | cpal::ErrorKind::StreamInvalidated => {
             error!("flux audio perdu : {e}");
             let _ = tx.send(AudioCmd::StreamError);
         }
+        cpal::ErrorKind::Xrun => debug!("flux audio : {e}"), // un par craquement : trop bavard en warn
+        _ => warn!("flux audio : {e}"),
     }
 }
 
