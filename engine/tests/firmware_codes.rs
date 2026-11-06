@@ -12,7 +12,7 @@ fn names() -> Vec<&'static str> {
 
 /// `#define NOM valeur` simples (decimal ou 0x); les macros a parametres sont ignorees.
 fn defines() -> HashMap<String, u32> {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../firmware/config/null_pad_codes.h");
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../firmware/null_pad_codes.h");
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
     let mut out = HashMap::new();
     for line in text.lines() {
