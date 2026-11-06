@@ -21,6 +21,32 @@
             #binding-cells = <0>;
             bindings = <&macro_tap &to 2 &kp ANN(3)>;
         };
+        // p4-p8 : sur aucune touche, visibles dans Studio (le snippet Studio garde tous les comportements)
+        np_p4: np_p4 {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            bindings = <&macro_tap &to 3 &kp ANN(4)>;
+        };
+        np_p5: np_p5 {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            bindings = <&macro_tap &to 4 &kp ANN(5)>;
+        };
+        np_p6: np_p6 {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            bindings = <&macro_tap &to 5 &kp ANN(6)>;
+        };
+        np_p7: np_p7 {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            bindings = <&macro_tap &to 6 &kp ANN(7)>;
+        };
+        np_p8: np_p8 {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            bindings = <&macro_tap &to 7 &kp ANN(8)>;
+        };
         np_00: np_00 {
             compatible = "zmk,behavior-macro";
             #binding-cells = <0>;

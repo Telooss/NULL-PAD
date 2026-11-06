@@ -67,3 +67,17 @@ fn inputs_match_engine_names() {
     }
     assert_eq!(d.keys().filter(|k| k.starts_with("IN_")).count(), names().len());
 }
+
+/// Texte des macros ACT/ANN (espaces normalises), pas seulement les constantes.
+#[test]
+fn macro_text_is_exact() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../firmware/null_pad_codes.h");
+    let text = std::fs::read_to_string(&path).unwrap();
+    let lines: Vec<String> = text.lines().map(|l| l.split_whitespace().collect::<Vec<_>>().join(" ")).collect();
+    for want in [
+        "#define ACT(p, i) ZMK_HID_USAGE(HID_USAGE_CONSUMER, (NP_ACTION_BASE + ((p) - 1) * NP_PROFILE_STRIDE + (i)))",
+        "#define ANN(p) ZMK_HID_USAGE(HID_USAGE_CONSUMER, (NP_ANNOUNCE_BASE + (p)))",
+    ] {
+        assert!(lines.iter().any(|l| l == want), "ligne manquante: {want}");
+    }
+}
