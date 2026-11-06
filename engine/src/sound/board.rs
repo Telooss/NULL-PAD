@@ -120,6 +120,11 @@ impl Soundboard {
     pub fn mic_gain(&self) -> f32 {
         if self.mic_muted.load(Relaxed) { 0.0 } else { f32::from_bits(self.mic_gain.load(Relaxed)) }
     }
+
+    #[cfg(test)]
+    pub(crate) fn has_monitor(&self) -> bool {
+        self.outputs.load().monitor.is_some()
+    }
 }
 
 #[cfg(test)]
