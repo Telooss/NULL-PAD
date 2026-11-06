@@ -3,11 +3,12 @@ use engine::codes::{encode_action, encode_profile, InputId};
 use std::collections::HashMap;
 use std::path::Path;
 
-const NAMES: [&str; 29] = [
-    "K00", "K01", "K02", "K03", "K04", "K05", "K06", "K07", "K08", "K09", "K10", "K11", "K12",
-    "K13", "K14", "K15", "K16", "K17", "K18", "K19", "M1", "M2", "M3", "ENC_L_CW", "ENC_L_CCW",
-    "ENC_L_PRESS", "ENC_R_CW", "ENC_R_CCW", "ENC_R_PRESS",
-];
+/// 29 = nombre d'entrees du moteur; les noms viennent de `InputId::name`.
+const N_INPUTS: u8 = 29;
+
+fn names() -> Vec<&'static str> {
+    (0..N_INPUTS).map(|i| InputId(i).name()).collect()
+}
 
 /// `#define NOM valeur` simples (decimal ou 0x); les macros a parametres sont ignorees.
 fn defines() -> HashMap<String, u32> {
@@ -40,7 +41,7 @@ fn action_formula_matches_engine() {
     let d = defines();
     let (base, stride) = (get(&d, "NP_ACTION_BASE"), get(&d, "NP_PROFILE_STRIDE"));
     for p in 1..=8u32 {
-        for n in NAMES {
+        for n in names() {
             let i = get(&d, &format!("IN_{n}"));
             let want = encode_action(p as u8, InputId(i as u8)) as u32;
             assert_eq!(base + (p - 1) * stride + i, want, "profil {p} entree {n}");
@@ -60,9 +61,9 @@ fn announce_matches_engine() {
 #[test]
 fn inputs_match_engine_names() {
     let d = defines();
-    for n in NAMES {
+    for n in names() {
         let want = InputId::from_name(n).unwrap().0 as u32;
         assert_eq!(get(&d, &format!("IN_{n}")), want, "IN_{n}");
     }
-    assert_eq!(d.keys().filter(|k| k.starts_with("IN_")).count(), NAMES.len());
+    assert_eq!(d.keys().filter(|k| k.starts_with("IN_")).count(), names().len());
 }
