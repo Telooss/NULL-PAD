@@ -19,12 +19,23 @@ pub struct Config {
     pub midi: MidiSettings,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
 #[serde(default)]
 pub struct ObsSettings {
     pub host: String,
     pub port: u16,
     pub password: Option<String>,
+}
+
+// Le mot de passe ne doit jamais atterrir dans un log.
+impl std::fmt::Debug for ObsSettings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ObsSettings")
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("password", &self.password.as_ref().map(|_| "***"))
+            .finish()
+    }
 }
 
 impl Default for ObsSettings {
@@ -264,6 +275,9 @@ fn validate(c: &Config) -> Result<(), String> {
     if c.obs.port == 0 {
         return Err("obs.port 0 hors 1..=65535".into());
     }
+    if c.midi.port.is_empty() {
+        return Err("midi.port vide".into());
+    }
     let s = &c.sound;
     for (name, v) in [
         ("master_volume", s.master_volume),
@@ -385,5 +399,24 @@ impl Config {
                 hold: w.hold || b.trigger == Trigger::Hold,
                 double: w.double || b.trigger == Trigger::DoubleTap,
             })
+    }
+}
+
+#[cfg(test)]
+mod debug_tests {
+    use super::ObsSettings;
+
+    #[test]
+    fn obs_debug_hides_password() {
+        let s = ObsSettings {
+            password: Some("hunter2".into()),
+            ..Default::default()
+        };
+        let d = format!("{s:?}");
+        assert!(
+            !d.contains("hunter2") && d.contains("password: Some(\"***\")"),
+            "{d}"
+        );
+        assert!(format!("{:?}", ObsSettings::default()).contains("password: None"));
     }
 }

@@ -34,6 +34,13 @@ fn rejects_timing_out_of_bounds() {
 }
 
 #[test]
+fn rejects_empty_midi_port() {
+    let mut v: serde_json::Value = serde_json::from_str(GOOD).unwrap();
+    v["midi"] = serde_json::json!({"port": ""});
+    invalid(&v.to_string());
+}
+
+#[test]
 fn rejects_bad_tag() {
     invalid(&GOOD.replace("AB1", "ab"));
     invalid(&GOOD.replace("AB1", "abcd"));

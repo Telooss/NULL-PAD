@@ -4,6 +4,8 @@ use engine::autostart::set_autostart;
 use engine::config::{default_config, load, save_default_if_missing};
 use engine::dispatch::{Dispatcher, SystemExecutor};
 use engine::input_win::{run_raw_input, DeviceFilter};
+use engine::midi::Midi;
+use engine::obs::start_obs;
 use engine::paths::{config_path, APP_DIR};
 use engine::sim::run_simulation;
 use engine::sound::board::Soundboard;
@@ -92,16 +94,29 @@ fn main() {
     });
     board.apply(&config.sound);
     audio.apply(&config.sound);
+    let obs = start_obs();
+    let midi = Midi::new();
+    obs.apply(&config.obs);
+    midi.apply(&config.midi);
     let config = Arc::new(ArcSwap::from_pointee(config));
-    let (b, a) = (board.clone(), audio.clone());
+    let (b, a, o, m) = (board.clone(), audio.clone(), obs.clone(), midi.clone());
     // Garde le watcher en vie jusqu'a la fin du programme.
     let _watcher = watch_config(path.clone(), config.clone(), move |c| {
         b.apply(&c.sound);
         a.apply(&c.sound);
+        o.apply(&c.obs);
+        m.apply(&c.midi);
     })
     .map_err(|e| tracing::error!("surveillance de la config impossible: {e}"))
     .ok();
-    let dispatcher = Dispatcher::new(config, Arc::new(SystemExecutor { sound: board }));
+    let dispatcher = Dispatcher::new(
+        config,
+        Arc::new(SystemExecutor {
+            sound: board,
+            obs,
+            midi,
+        }),
+    );
     if simulate {
         run_simulation(dispatcher);
     } else {

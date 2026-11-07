@@ -100,6 +100,18 @@ mod tests {
     }
 
     #[test]
+    fn unknown_port_reports_clear_error() {
+        let m = Midi::new();
+        m.apply(&MidiSettings {
+            port: "zz-no-such-port-zz".into(),
+        });
+        assert_eq!(
+            m.send(&[cc(1, 20, 1)]),
+            Err("port MIDI \"zz-no-such-port-zz\" introuvable (loopMIDI lancé ?)".to_string())
+        );
+    }
+
+    #[test]
     #[ignore = "ouvre un vrai port MIDI"]
     fn sends_to_real_port() {
         let m = Midi::new();

@@ -1,12 +1,14 @@
 //! Client obs-websocket v5 minimal (synchrone, un thread dedie).
 
 use crate::config::{Action, ObsOp, ObsSettings};
+use arc_swap::ArcSwap;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::io::ErrorKind;
 use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::mpsc::{sync_channel, SyncSender, TrySendError};
+use std::sync::Arc;
 use std::time::Duration;
 use tungstenite::{Message, WebSocket};
 
@@ -14,14 +16,10 @@ const TIMEOUT: Duration = Duration::from_secs(2);
 
 type Ws = WebSocket<TcpStream>;
 
-pub enum ObsCmd {
-    Send(Action),
-    Apply(ObsSettings),
-}
-
 #[derive(Clone)]
 pub struct ObsHandle {
-    tx: SyncSender<ObsCmd>,
+    tx: SyncSender<Action>,
+    settings: Arc<ArcSwap<ObsSettings>>,
 }
 
 /// `base64(sha256(base64(sha256(password + salt)) + challenge))` (protocol.md).
@@ -58,7 +56,7 @@ pub fn request_for(action: &Action, id: u64) -> Option<Value> {
 impl ObsHandle {
     /// Ne bloque jamais : file pleine ou thread mort -> l'action est jetee.
     pub fn send(&self, action: Action) {
-        match self.tx.try_send(ObsCmd::Send(action)) {
+        match self.tx.try_send(action) {
             Ok(()) => {}
             Err(TrySendError::Full(_)) => tracing::warn!("OBS: file pleine, action ignoree"),
             Err(TrySendError::Disconnected(_)) => {
@@ -67,60 +65,60 @@ impl ObsHandle {
         }
     }
 
-    /// Appele au rechargement de la config (pas sur le chemin d'appui) : peut attendre la file.
+    /// Ne bloque jamais : le thread OBS relit les reglages avant chaque action.
     pub fn apply(&self, s: &ObsSettings) {
-        let _ = self.tx.send(ObsCmd::Apply(s.clone()));
+        self.settings.store(Arc::new(s.clone()));
     }
 }
 
 pub fn start_obs() -> ObsHandle {
-    let (tx, rx) = sync_channel(32);
+    let (tx, rx) = sync_channel::<Action>(32);
+    let shared = Arc::new(ArcSwap::from_pointee(ObsSettings::default()));
+    let seen = shared.clone();
     std::thread::Builder::new()
         .name("obs".into())
         .spawn(move || {
-            let mut settings = ObsSettings::default();
+            let mut settings = seen.load_full();
             let mut conn: Option<Ws> = None;
             let mut next_id = 0u64;
-            for cmd in rx {
-                match cmd {
-                    ObsCmd::Apply(s) => {
-                        if s != settings {
-                            conn = None;
-                            settings = s;
-                        }
-                    }
-                    ObsCmd::Send(action) => {
-                        next_id += 1;
-                        let Some(req) = request_for(&action, next_id) else {
+            for action in rx {
+                let latest = seen.load_full();
+                if *latest != *settings {
+                    conn = None;
+                    settings = latest;
+                }
+                next_id += 1;
+                let Some(req) = request_for(&action, next_id) else {
+                    continue;
+                };
+                if conn.as_mut().is_some_and(|ws| !alive(ws)) {
+                    conn = None;
+                }
+                if conn.is_none() {
+                    match connect(&settings) {
+                        Ok(ws) => conn = Some(ws),
+                        Err(e) => {
+                            tracing::warn!(
+                                "OBS {}:{} injoignable: {e}",
+                                settings.host,
+                                settings.port
+                            );
                             continue;
-                        };
-                        if conn.as_mut().is_some_and(|ws| !alive(ws)) {
-                            conn = None;
-                        }
-                        if conn.is_none() {
-                            match connect(&settings) {
-                                Ok(ws) => conn = Some(ws),
-                                Err(e) => {
-                                    tracing::warn!(
-                                        "OBS {}:{} injoignable: {e}",
-                                        settings.host,
-                                        settings.port
-                                    );
-                                    continue;
-                                }
-                            }
-                        }
-                        let ws = conn.as_mut().expect("connecte");
-                        if let Err(e) = request(ws, &req, &next_id.to_string()) {
-                            tracing::warn!("OBS: {} echouee: {e}", req["d"]["requestType"]);
-                            conn = None;
                         }
                     }
+                }
+                let ws = conn.as_mut().expect("connecte");
+                if let Err(e) = request(ws, &req, &next_id.to_string()) {
+                    tracing::warn!("OBS: {} echouee: {e}", req["d"]["requestType"]);
+                    conn = None;
                 }
             }
         })
         .expect("thread OBS");
-    ObsHandle { tx }
+    ObsHandle {
+        tx,
+        settings: shared,
+    }
 }
 
 /// Vide sans attendre ce qui est arrive pendant l'inactivite ; faux si OBS a ferme.
@@ -463,6 +461,25 @@ mod tests {
         for _ in 0..100 {
             obs.send(scene("Jeu"));
         }
+        assert!(t.elapsed() < Duration::from_millis(50), "{:?}", t.elapsed());
+    }
+
+    #[test]
+    fn apply_never_blocks_when_queue_is_full() {
+        let (l, port) = bind();
+        // Accepte puis se tait : le thread OBS reste bloque dans le handshake (~2 s).
+        let _mute = thread::spawn(move || {
+            let held = l.accept();
+            thread::sleep(Duration::from_secs(4));
+            drop(held);
+        });
+        let obs = start_obs();
+        obs.apply(&settings(port, None));
+        obs.send(scene("Jeu"));
+        thread::sleep(Duration::from_millis(200)); // le thread prend cette action et bloque
+        while obs.tx.try_send(scene("Jeu")).is_ok() {}
+        let t = Instant::now();
+        obs.apply(&settings(port, Some("autre")));
         assert!(t.elapsed() < Duration::from_millis(50), "{:?}", t.elapsed());
     }
 }

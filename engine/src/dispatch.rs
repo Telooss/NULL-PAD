@@ -4,6 +4,8 @@ use crate::actions::keys::{parse_shortcut, send_media, send_shortcut, send_text}
 use crate::actions::launch::{command, launch, open};
 use crate::codes::{decode, Code, InputId};
 use crate::config::{Action, Config, Step};
+use crate::midi::{cc, note_off, note_on, Midi};
+use crate::obs::ObsHandle;
 use crate::report::Edge;
 use crate::sound::board::Soundboard;
 use crate::triggers::{Fire, Triggers};
@@ -22,6 +24,8 @@ pub trait Executor: Send + Sync {
 
 pub struct SystemExecutor {
     pub sound: Arc<Soundboard>,
+    pub obs: ObsHandle,
+    pub midi: Arc<Midi>,
 }
 
 impl Executor for SystemExecutor {
@@ -68,9 +72,23 @@ impl Executor for SystemExecutor {
             | Action::ObsMute { .. }
             | Action::ObsStream { .. }
             | Action::ObsRecord { .. }
-            | Action::ObsReplaySave
-            | Action::MidiNote { .. }
-            | Action::MidiCc { .. } => Err("non branche".into()),
+            | Action::ObsReplaySave => {
+                self.obs.send(action.clone());
+                Ok(())
+            }
+            Action::MidiNote {
+                channel,
+                note,
+                velocity,
+            } => self.midi.send(&[
+                note_on(*channel, *note, *velocity),
+                note_off(*channel, *note),
+            ]),
+            Action::MidiCc {
+                channel,
+                cc: n,
+                value,
+            } => self.midi.send(&[cc(*channel, *n, *value)]),
             Action::Macro { .. } | Action::Toggle { .. } => Err("action non unitaire".into()),
         };
         if let Err(e) = res {
@@ -209,7 +227,7 @@ impl Dispatcher {
 mod tests {
     use super::*;
     use crate::codes::encode_action;
-    use crate::config::{Binding, Profile};
+    use crate::config::{Binding, ObsOp, Profile};
     use crate::triggers::{Timing, Trigger};
     use std::sync::Mutex;
 
@@ -412,6 +430,46 @@ mod tests {
             d.on_edge(Edge::Down(encode_action(1, InputId(i))), Instant::now());
         }
         assert!(rec.wait_len(4));
+        assert_eq!(
+            rec.log(),
+            acts.iter().map(|a| format!("{a:?}")).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn obs_and_midi_actions_go_through_the_worker() {
+        let acts = [
+            Action::ObsScene {
+                scene: "Jeu".into(),
+            },
+            Action::ObsMute {
+                input: "Micro".into(),
+            },
+            Action::ObsStream { op: ObsOp::Toggle },
+            Action::ObsRecord { op: ObsOp::Toggle },
+            Action::ObsReplaySave,
+            Action::MidiNote {
+                channel: 1,
+                note: 60,
+                velocity: 100,
+            },
+            Action::MidiCc {
+                channel: 1,
+                cc: 20,
+                value: 1,
+            },
+        ];
+        let (mut d, rec) = setup(
+            acts.iter()
+                .cloned()
+                .enumerate()
+                .map(|(i, a)| (i as u8, a))
+                .collect(),
+        );
+        for i in 0..7 {
+            d.on_edge(Edge::Down(encode_action(1, InputId(i))), Instant::now());
+        }
+        assert!(rec.wait_len(7));
         assert_eq!(
             rec.log(),
             acts.iter().map(|a| format!("{a:?}")).collect::<Vec<_>>()
