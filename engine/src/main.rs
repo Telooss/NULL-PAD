@@ -6,7 +6,7 @@ use engine::dispatch::{Dispatcher, SystemExecutor};
 use engine::input_win::{run_raw_input, DeviceFilter};
 use engine::midi::Midi;
 use engine::obs::start_obs;
-use engine::paths::{config_path, migrate_app_dir, APP_DIR};
+use engine::paths::{config_path, migrate_app_dir, APP_DIR, OLD_APP_DIR};
 use engine::sim::run_simulation;
 use engine::sound::board::Soundboard;
 use engine::sound::devices::{cable_present, start_audio};
@@ -42,11 +42,7 @@ fn main() {
     }
     let base = dirs::config_dir().unwrap_or_default();
     // Avant les logs : le dossier NULL-PAD est renomme avant d'y ecrire.
-    let migrated = if simulate {
-        Ok(false)
-    } else {
-        migrate_app_dir(&base)
-    };
+    let migrated = migrate_app_dir(&base);
     let logs = base.join(APP_DIR).join("logs");
     // Sans dossier de logs on continue sans fichier (la console reste en simulation).
     let file_log = RollingFileAppender::builder()
@@ -73,6 +69,15 @@ fn main() {
 
     if let Err(e) = migrated {
         tracing::error!("migration du dossier NULL-PAD impossible: {e}");
+        // Ne pas ecrire une config par defaut par-dessus une migration en attente.
+        let old = base.join(OLD_APP_DIR).join("config.json");
+        if path == config_path() && old.exists() && !path.exists() {
+            tracing::warn!(
+                "ancienne config utilisee pour cette session: {}",
+                old.display()
+            );
+            path = old;
+        }
     }
     if !simulate {
         migrate_autostart();
