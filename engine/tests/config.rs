@@ -166,3 +166,98 @@ fn rejects_bad_sound_settings() {
         r#"{{"type":"Macro","steps":[{{"type":"Do","action":{ghost}}}]}}"#
     )));
 }
+
+#[test]
+fn old_config_without_obs_midi_loads() {
+    let c = parse(GOOD).unwrap();
+    assert_eq!(c.obs, ObsSettings::default());
+    assert_eq!(c.midi, MidiSettings::default());
+    assert_eq!(c.obs.host, "127.0.0.1");
+    assert_eq!(c.obs.port, 4455);
+    assert_eq!(c.obs.password, None);
+    assert_eq!(c.midi.port, "NULL-PAD");
+}
+
+#[test]
+fn obs_midi_fixture_parses() {
+    let c = parse(include_str!("fixtures/obs_midi.json")).unwrap();
+    assert_eq!(c.obs.host, "192.168.1.5");
+    assert_eq!(c.obs.port, 4456);
+    assert_eq!(c.obs.password.as_deref(), Some("pw"));
+    assert_eq!(c.midi.port, "loopMIDI Port");
+    let acts: Vec<_> = c.profiles[0]
+        .bindings
+        .iter()
+        .map(|b| b.action.clone())
+        .collect();
+    assert_eq!(
+        acts,
+        vec![
+            Action::ObsScene {
+                scene: "Jeu".into()
+            },
+            Action::ObsMute {
+                input: "Micro".into()
+            },
+            Action::ObsStream { op: ObsOp::Toggle },
+            Action::ObsRecord { op: ObsOp::Start },
+            Action::ObsReplaySave,
+            Action::MidiNote {
+                channel: 1,
+                note: 60,
+                velocity: 100
+            },
+            Action::MidiCc {
+                channel: 16,
+                cc: 20,
+                value: 127
+            },
+        ]
+    );
+}
+
+#[test]
+fn rejects_bad_obs_midi() {
+    let wrap = |obs: &str, action: &str| {
+        format!(
+            r#"{{"version":1,"timing":{{"hold_ms":300,"double_ms":250}},{obs}"profiles":[{{"id":1,"name":"P","tag":"AB1","bindings":[{{"input":"K00","trigger":"Press","action":{action}}}]}}]}}"#
+        )
+    };
+    let note = |c: u32, n: u32, v: u32| {
+        format!(r#"{{"type":"MidiNote","channel":{c},"note":{n},"velocity":{v}}}"#)
+    };
+    let cc = |c: u32, n: u32, v: u32| {
+        format!(r#"{{"type":"MidiCc","channel":{c},"cc":{n},"value":{v}}}"#)
+    };
+    // sanity: valid forms are accepted
+    parse(&wrap("", &note(16, 127, 127))).unwrap();
+    parse(&wrap("", &cc(1, 0, 0))).unwrap();
+    for bad in [
+        note(0, 60, 100),
+        note(17, 60, 100),
+        note(1, 128, 100),
+        note(1, 60, 0),
+        note(1, 60, 128),
+        cc(0, 20, 1),
+        cc(17, 20, 1),
+        cc(1, 128, 1),
+        cc(1, 20, 128),
+        r#"{"type":"ObsScene","scene":""}"#.into(),
+        r#"{"type":"ObsMute","input":""}"#.into(),
+        format!(
+            r#"{{"type":"Macro","steps":[{{"type":"Do","action":{}}}]}}"#,
+            note(0, 60, 100)
+        ),
+        format!(
+            r#"{{"type":"Toggle","on":{},"off":{{"type":"MicMute"}}}}"#,
+            note(1, 128, 100)
+        ),
+        format!(
+            r#"{{"type":"Toggle","on":{{"type":"MicMute"}},"off":{}}}"#,
+            cc(1, 20, 128)
+        ),
+    ] {
+        invalid(&wrap("", &bad));
+    }
+    invalid(&wrap(r#""obs":{"port":0},"#, r#"{"type":"MicMute"}"#));
+}

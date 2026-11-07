@@ -1,0 +1,11 @@
+{"version":1,"timing":{"hold_ms":300,"double_ms":250},
+"obs":{"host":"192.168.1.5","port":4456,"password":"pw"},
+"midi":{"port":"loopMIDI Port"},
+"profiles":[{"id":1,"name":"P","tag":"AB1","bindings":[
+{"input":"K00","trigger":"Press","action":{"type":"ObsScene","scene":"Jeu"}},
+{"input":"K01","trigger":"Press","action":{"type":"ObsMute","input":"Micro"}},
+{"input":"K02","trigger":"Press","action":{"type":"ObsStream","op":"Toggle"}},
+{"input":"K03","trigger":"Press","action":{"type":"ObsRecord","op":"Start"}},
+{"input":"K04","trigger":"Press","action":{"type":"ObsReplaySave"}},
+{"input":"K05","trigger":"Press","action":{"type":"MidiNote","channel":1,"note":60,"velocity":100}},
+{"input":"K06","trigger":"Press","action":{"type":"MidiCc","channel":16,"cc":20,"value":127}}]}]}

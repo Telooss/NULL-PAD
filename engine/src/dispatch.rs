@@ -64,6 +64,13 @@ impl Executor for SystemExecutor {
                 tracing::debug!("soundboard coupee: {}", self.sound.toggle_master_mute());
                 Ok(())
             }
+            Action::ObsScene { .. }
+            | Action::ObsMute { .. }
+            | Action::ObsStream { .. }
+            | Action::ObsRecord { .. }
+            | Action::ObsReplaySave
+            | Action::MidiNote { .. }
+            | Action::MidiCc { .. } => Err("non branche".into()),
             Action::Macro { .. } | Action::Toggle { .. } => Err("action non unitaire".into()),
         };
         if let Err(e) = res {
@@ -257,6 +264,8 @@ mod tests {
             version: 1,
             timing: Timing::default(),
             sound: Default::default(),
+            obs: Default::default(),
+            midi: Default::default(),
             profiles: vec![Profile {
                 id: 1,
                 name: "p".into(),
