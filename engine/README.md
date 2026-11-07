@@ -165,17 +165,17 @@ Le moteur pilote OBS par obs-websocket v5. Dans OBS : *Outils → Paramètres du
 { "input": "K05", "trigger": "Press", "action": { "type": "ObsReplaySave" } }
 ```
 
-`op` vaut `Start`, `Stop` ou `Toggle`. `password` est `null` si OBS n'en demande pas ; il n'est jamais écrit dans les logs. OBS fermé, mot de passe faux ou scène inconnue : un avertissement dans les logs, le moteur continue (une seule tentative de connexion par appui, délai 2 s, sans bloquer le pad). `ObsReplaySave` demande que le tampon de rediffusion soit démarré dans OBS.
+`op` vaut `Start`, `Stop` ou `Toggle`. `password` est `null` si OBS n'en demande pas ; il n'est jamais écrit dans les logs. OBS fermé, mot de passe faux ou scène inconnue : un avertissement dans les logs, le moteur continue (une seule tentative de connexion par appui, délai 2 s, sans bloquer le pad ; les actions en attente pendant une panne sont abandonnées, jamais rejouées plus tard). Gardez `host` à `127.0.0.1` : `localhost` peut doubler le temps de connexion sous Windows. `ObsReplaySave` demande que que le replay buffer (« Tampon de relecture » dans OBS en français) soit démarré dans OBS.
 
 ## MIDI
 
 Le moteur envoie du MIDI vers un port existant, par défaut `NULL-PAD` (`"midi": { "port": "NULL-PAD" }`, nom cherché sans tenir compte de la casse, sous-chaîne acceptée ; il ne peut pas être vide).
 
 1. Installer [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html) et créer un port nommé `NULL-PAD` (ou une boucle Windows MIDI Services du même nom), et le laisser tourner.
-2. Dans Ableton : *Paramètres → Link, Tempo & MIDI*, activer l'entrée « Remote » du port `NULL-PAD`.
+2. Dans Ableton : *Paramètres → Link, Tempo & MIDI*, activer l'entrée « Remote » du port `NULL-PAD` (pour le mapping) ; pour *jouer* un instrument avec `MidiNote`, activer aussi son entrée « Track ».
 3. Actions : `{ "type": "MidiNote", "channel": 1, "note": 60, "velocity": 100 }` et `{ "type": "MidiCc", "channel": 1, "cc": 20, "value": 1 }` (canal 1..16, note/CC/valeur 0..127, vélocité 1..127).
 
-Molette vers Ableton : lier le sens horaire à `MidiCc` avec `value` 1 et l'anti-horaire avec `value` 127 (CC 1 par exemple), puis dans Ableton mapper en mode « Relative (2's Comp.) ».
+Molette vers Ableton : lier le sens horaire à `MidiCc` avec `value` 1 et l'anti-horaire avec `value` 127 sur un même CC libre (par exemple CC 20 ; 1 et 127 sont les *valeurs* envoyées, pas le numéro de CC), puis dans Ableton mapper en mode « Relative (2's Comp.) ».
 
 Limite : `MidiNote` est un tap (note on puis note off tout de suite), pas une note tenue.
 

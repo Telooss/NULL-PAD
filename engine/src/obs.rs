@@ -81,7 +81,7 @@ pub fn start_obs() -> ObsHandle {
             let mut settings = seen.load_full();
             let mut conn: Option<Ws> = None;
             let mut next_id = 0u64;
-            for action in rx {
+            for action in &rx {
                 let latest = seen.load_full();
                 if *latest != *settings {
                     conn = None;
@@ -98,8 +98,10 @@ pub fn start_obs() -> ObsHandle {
                     match connect(&settings) {
                         Ok(ws) => conn = Some(ws),
                         Err(e) => {
+                            // Les actions en attente seraient rejouees trop tard (ex. Toggle de stream).
+                            let dropped = rx.try_iter().count();
                             tracing::warn!(
-                                "OBS {}:{} injoignable: {e}",
+                                "OBS {}:{} injoignable: {e} ({dropped} action(s) en attente abandonnee(s))",
                                 settings.host,
                                 settings.port
                             );
@@ -449,6 +451,31 @@ mod tests {
         obs.send(scene("Deux"));
         let req = rx.recv_timeout(WAIT).expect("envoi apres redemarrage");
         assert_eq!(req["d"]["requestData"]["sceneName"], "Deux");
+    }
+
+    #[test]
+    fn queued_actions_are_dropped_when_obs_is_unreachable() {
+        let (dead, dead_port) = bind();
+        drop(dead);
+        let (l, port) = bind();
+        let (tx, rx) = mpsc::channel();
+        let _srv = fake_obs(l, None, 1, 10, tx);
+        let obs = start_obs();
+        obs.apply(&settings(dead_port, None));
+        for _ in 0..5 {
+            obs.send(Action::ObsStream { op: ObsOp::Toggle });
+        }
+        // Laisse le thread echouer sur la premiere et vider la file.
+        thread::sleep(Duration::from_secs(4));
+        obs.apply(&settings(port, None));
+        obs.send(scene("Apres"));
+        let req = rx.recv_timeout(WAIT).expect("derniere action recue");
+        assert_eq!(req["d"]["requestData"]["sceneName"], "Apres");
+        thread::sleep(Duration::from_secs(1));
+        assert!(
+            rx.try_recv().is_err(),
+            "les actions en file ne sont pas rejouees"
+        );
     }
 
     #[test]

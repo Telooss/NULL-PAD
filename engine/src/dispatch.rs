@@ -437,7 +437,8 @@ mod tests {
     }
 
     #[test]
-    fn obs_and_midi_actions_go_through_the_worker() {
+    fn obs_and_midi_actions_reach_the_worker_queue() {
+        // Verifie seulement le transfert au worker (executeur enregistreur), pas OBS/MIDI.
         let acts = [
             Action::ObsScene {
                 scene: "Jeu".into(),
