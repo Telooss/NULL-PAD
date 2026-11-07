@@ -1,12 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use arc_swap::ArcSwap;
-use engine::autostart::set_autostart;
+use engine::autostart::{migrate_autostart, set_autostart};
 use engine::config::{default_config, load, save_default_if_missing};
 use engine::dispatch::{Dispatcher, SystemExecutor};
 use engine::input_win::{run_raw_input, DeviceFilter};
 use engine::midi::Midi;
 use engine::obs::start_obs;
-use engine::paths::{config_path, APP_DIR};
+use engine::paths::{config_path, migrate_app_dir, APP_DIR};
 use engine::sim::run_simulation;
 use engine::sound::board::Soundboard;
 use engine::sound::devices::{cable_present, start_audio};
@@ -40,10 +40,14 @@ fn main() {
             }
         }
     }
-    let logs = dirs::config_dir()
-        .unwrap_or_default()
-        .join(APP_DIR)
-        .join("logs");
+    let base = dirs::config_dir().unwrap_or_default();
+    // Avant les logs : le dossier NULL-PAD est renomme avant d'y ecrire.
+    let migrated = if simulate {
+        Ok(false)
+    } else {
+        migrate_app_dir(&base)
+    };
+    let logs = base.join(APP_DIR).join("logs");
     // Sans dossier de logs on continue sans fichier (la console reste en simulation).
     let file_log = RollingFileAppender::builder()
         .rotation(Rotation::DAILY)
@@ -67,9 +71,16 @@ fn main() {
         default_hook(info);
     }));
 
+    if let Err(e) = migrated {
+        tracing::error!("migration du dossier NULL-PAD impossible: {e}");
+    }
+    if !simulate {
+        migrate_autostart();
+    }
+
     // Instance unique (pas en simulation). Le handle reste ouvert jusqu'a la fin du processus.
     let _single = (!simulate).then(|| {
-        let h = unsafe { CreateMutexW(None, false, w!(r"Local\nullpad-engine")) };
+        let h = unsafe { CreateMutexW(None, false, w!(r"Local\nullctl-engine")) };
         if h.is_ok() && unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
             tracing::info!("deja lance, arret");
             std::process::exit(0);

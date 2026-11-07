@@ -276,6 +276,7 @@ mod tests {
                 input: InputId(i),
                 trigger: Trigger::Press,
                 action,
+                label: None,
             })
             .collect();
         let cfg = Config {
@@ -401,6 +402,7 @@ mod tests {
             input: InputId(0),
             trigger: Trigger::Hold,
             action: text("h"),
+            label: None,
         }];
         let swap = Arc::new(ArcSwap::from_pointee(cfg.clone()));
         let mut d = Dispatcher::new(swap.clone(), Arc::new(Rec::default()));

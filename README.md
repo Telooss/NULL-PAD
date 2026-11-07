@@ -31,14 +31,14 @@ Un **profil** = une couche du firmware. Dans chaque profil, une touche est soit 
 Prérequis : Windows 11, [Rust](https://rustup.rs) stable.
 
 ```powershell
-cargo build --release          # produit target\release\nullpad.exe
+cargo build --release          # produit target\release\nullctl-engine.exe
 cargo run -p engine --release  # lance le moteur (icône dans la zone de notification)
 cargo test
 ```
 
 Sans le pad, `--simulate` remplace le macropad par des lignes tapées au clavier. Détails, format de la config et liste des actions : [engine/README.md](engine/README.md).
 
-Config et journaux : `%APPDATA%\NULL-PAD\`.
+Config et journaux : `%APPDATA%\nullctl\`.
 
 ## Organisation
 

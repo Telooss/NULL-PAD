@@ -268,3 +268,24 @@ fn rejects_bad_obs_midi() {
     }
     invalid(&wrap(r#""obs":{"port":0},"#, r#"{"type":"MicMute"}"#));
 }
+
+#[test]
+fn label_roundtrips_and_is_optional() {
+    let mut v: serde_json::Value = serde_json::from_str(GOOD).unwrap();
+    assert!(v["profiles"][0]["bindings"][0].get("label").is_none());
+    let c = parse(&v.to_string()).unwrap();
+    assert_eq!(c.profiles[0].bindings[0].label, None);
+    assert!(
+        serde_json::to_value(&c).unwrap()["profiles"][0]["bindings"][0]
+            .get("label")
+            .is_none()
+    );
+
+    v["profiles"][0]["bindings"][0]["label"] = "HORN".into();
+    let c = parse(&v.to_string()).unwrap();
+    assert_eq!(c.profiles[0].bindings[0].label.as_deref(), Some("HORN"));
+    assert_eq!(
+        serde_json::to_value(&c).unwrap()["profiles"][0]["bindings"][0]["label"],
+        "HORN"
+    );
+}

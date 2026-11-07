@@ -45,7 +45,7 @@ fn press_hold_doubletap_toggle_macro() {
         let _ = std::fs::remove_file(marker(n));
     }
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_nullpad"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_nullctl-engine"))
         .args(["--simulate", "--config"])
         .arg(&cfg)
         .stdin(Stdio::piped())

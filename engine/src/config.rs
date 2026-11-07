@@ -139,6 +139,9 @@ pub struct Binding {
     pub input: InputId,
     pub trigger: Trigger,
     pub action: Action,
+    /// Libelle d'affichage pour l'interface ; le moteur l'ignore.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -347,6 +350,7 @@ pub fn default_config() -> Config {
         input: InputId::from_name(input).expect("nom d'entree valide"),
         trigger: Trigger::Press,
         action,
+        label: None,
     };
     Config {
         version: 1,

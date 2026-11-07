@@ -1,4 +1,4 @@
-# Moteur de NULL/PAD
+# Moteur de NULL/CONTROL (nullctl)
 
 Programme Windows 11 qui tourne en arrière-plan (icône dans la zone de notification). Le NULL/PAD envoie des codes HID « Consommateur » réservés ; le moteur les lit via Raw Input, retrouve la liaison configurée (profil + touche + type d'appui) et exécute l'action : raccourci, texte, macro, lancement d'un programme, ouverture d'un lien, commande PowerShell, touche média, volume, micro.
 
@@ -9,7 +9,7 @@ Programme Windows 11 qui tourne en arrière-plan (icône dans la zone de notific
 ## Compiler et lancer
 
 ```powershell
-cargo build -p engine --release     # produit target\release\nullpad.exe
+cargo build -p engine --release     # produit target\release\nullctl-engine.exe
 cargo run -p engine --release       # lance le moteur (icône dans la zone de notification)
 cargo test -p engine
 cargo clippy -p engine --all-targets -- -D warnings
@@ -39,12 +39,12 @@ cargo run -p engine -- --simulate                    # config par défaut, saisi
 `--config <chemin>` utilise un autre fichier de config (pratique avec `--simulate` pour ne pas toucher à la vraie config) :
 
 ```powershell
-nullpad.exe --simulate --config C:\temp\test.json
+nullctl-engine.exe --simulate --config C:\temp\test.json
 ```
 
 ## Fichier de config
 
-Emplacement : `%APPDATA%\NULL-PAD\config.json` (le menu de l'icône ouvre le dossier).
+Emplacement : `%APPDATA%\nullctl\config.json` (le menu de l'icône ouvre le dossier).
 
 Règles : `version` vaut 1 ; profils 1 à 8, ids uniques ; `tag` = exactement 3 caractères `A-Z0-9` ; une seule liaison par (touche, déclencheur) dans un profil ; `delta` de volume entre -100 et 100 ; un `Toggle` ne peut pas être imbriqué ni placé dans une `Macro`.
 
@@ -207,7 +207,7 @@ Codes HID Consommateur (usages) envoyés par le NULL/PAD :
 
 ## Logs
 
-Dossier `%APPDATA%\NULL-PAD\logs`, fichier `engine.log` (rotation quotidienne). En `--simulate`, les logs sont aussi affichés dans la console. Les erreurs de config, d'action et de démarrage automatique y sont consignées.
+Dossier `%APPDATA%\nullctl\logs`, fichier `engine.log` (rotation quotidienne). En `--simulate`, les logs sont aussi affichés dans la console. Les erreurs de config, d'action et de démarrage automatique y sont consignées.
 
 ## À tester à la main
 
@@ -222,7 +222,7 @@ Le test automatique (`cargo test -p engine`, dont `tests/e2e.rs`) couvre appui, 
 - [ ] Ouvrir (`https://example.com` s'ouvre dans le navigateur)
 - [ ] Icône de la zone de notification et son menu : « Ouvrir le dossier de config », « Démarrer avec Windows » (case cochée/décochée), « Quitter »
 - [ ] Démarrage avec Windows : actif après le premier lancement ; le moteur se relance à la prochaine ouverture de session
-- [ ] Instance unique : lancer `nullpad.exe` une 2e fois ne crée pas de 2e icône
+- [ ] Instance unique : lancer `nullctl-engine.exe` une 2e fois ne crée pas de 2e icône
 - [ ] Soundboard : un son s'entend dans le casque
 - [ ] `SoundVolume` sur une molette baisse un son en cours (casque et VB-Cable) ; en mode `App`, la voix aussi
 - [ ] Le son s'entend dans « CABLE Output » (enregistreur de sons Windows ou Discord)

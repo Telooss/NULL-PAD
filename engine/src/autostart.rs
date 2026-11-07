@@ -49,6 +49,17 @@ pub fn set_autostart(enabled: bool) -> io::Result<()> {
     err.ok().map_err(io::Error::other)
 }
 
+/// Ancienne valeur `Run` "NULL-PAD" presente : la supprime et cree `nullctl` vers l'exe courant.
+pub fn migrate_autostart() {
+    let old = HSTRING::from(crate::paths::OLD_APP_DIR);
+    // ERROR_FILE_NOT_FOUND (2) : pas d'ancienne valeur, le choix de l'utilisateur est garde.
+    if unsafe { RegDeleteKeyValueW(HKEY_CURRENT_USER, RUN_KEY, &old) }.0 == 0 {
+        if let Err(e) = set_autostart(true) {
+            tracing::error!("migration du demarrage auto impossible: {e}");
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

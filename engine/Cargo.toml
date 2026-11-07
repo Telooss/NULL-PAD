@@ -5,7 +5,7 @@ edition = "2021"
 description = "Moteur Windows du macropad NULL/PAD"
 
 [[bin]]
-name = "nullpad"
+name = "nullctl-engine"
 path = "src/main.rs"
 
 [dependencies]

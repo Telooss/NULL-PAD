@@ -1,6 +1,6 @@
 # Logiciel de NULL/PAD — conception
 
-Date : 2026-11-05. Statut : validé par Alan le 2026-11-05. Nom choisi le 2026-11-05 : **NULL/PAD** (§10).
+Date : 2026-11-05. Statut : validé par Alan le 2026-11-05. Noms choisis le 2026-11-05, révisés le 2026-11-07 : **NULL/PAD** pour le pad, **NULL/CONTROL (nullctl)** pour le logiciel (§10).
 
 ## 1. Intention
 
@@ -145,4 +145,4 @@ Références fournies par Alan : bureau collage de fenêtres Win98/XP/Mac OS X, 
 
 - **Risque non vérifié** : certains jeux à anti-triche ignorent les frappes simulées ou tournent en administrateur. Les actions « raccourci » pourraient ne pas marcher en jeu ; les sons dans le micro ne sont pas concernés.
 
-- **Nom (décidé par Alan le 2026-11-05)** : le macropad et son logiciel s'appellent **NULL/PAD** (capitales, avec le slash : rendu du pad, en-tête, barre de titre). Là où le slash est interdit : `NULL-PAD` ou `nullpad` (dépôt `Telooss/NULL-PAD`, exécutable `nullpad.exe`, config `%APPDATA%\NULL-PAD\`). Piste écartée : nullctl. L'identité passe par la typo du nom, jamais par un symbole emprunté (pas de crâne, rien qui imite DedSec / Watch Dogs).
+- **Nom (décidé par Alan le 2026-11-05)** : le macropad s'appelle **NULL/PAD** (capitales, avec le slash : rendu du pad, en-tête, barre de titre ; dépôt `Telooss/NULL-PAD`). Révisé par Alan le 2026-11-07 : le logiciel s'appelle **NULL/CONTROL**, ou **nullctl** là où le slash est interdit (moteur `nullctl-engine.exe`, interface `nullctl.exe`, config `%APPDATA%\nullctl\`, migrée depuis `%APPDATA%\NULL-PAD\`). La piste nullctl, écartée le 2026-11-05, est donc retenue. L'identité passe par la typo du nom, jamais par un symbole emprunté (pas de crâne, rien qui imite DedSec / Watch Dogs).
