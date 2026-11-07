@@ -4,6 +4,7 @@ use engine::autostart::{migrate_autostart, set_autostart};
 use engine::config::{default_config, load, save_default_if_missing};
 use engine::dispatch::{Dispatcher, SystemExecutor};
 use engine::input_win::{run_raw_input, DeviceFilter};
+use engine::ipc::{serve_events, Events, EVENTS_PIPE};
 use engine::midi::Midi;
 use engine::obs::start_obs;
 use engine::paths::{config_path, migrate_app_dir, APP_DIR, OLD_APP_DIR};
@@ -115,9 +116,14 @@ fn main() {
     obs.apply(&config.obs);
     midi.apply(&config.midi);
     let config = Arc::new(ArcSwap::from_pointee(config));
+    // Sans pipe le moteur tourne quand meme, simplement sans interface.
+    let events = serve_events(EVENTS_PIPE).unwrap_or_else(|e| {
+        tracing::warn!("pipe d'evenements indisponible: {e}");
+        Events::none()
+    });
     let (b, a, o, m) = (board.clone(), audio.clone(), obs.clone(), midi.clone());
     // Garde le watcher en vie jusqu'a la fin du programme.
-    let _watcher = watch_config(path.clone(), config.clone(), move |c| {
+    let _watcher = watch_config(path.clone(), config.clone(), events.clone(), move |c| {
         b.apply(&c.sound);
         a.apply(&c.sound);
         o.apply(&c.obs);
@@ -132,6 +138,7 @@ fn main() {
             obs,
             midi,
         }),
+        events,
     );
     if simulate {
         run_simulation(dispatcher);

@@ -1,5 +1,6 @@
 use arc_swap::ArcSwap;
 use engine::config::{default_config, load, Config};
+use engine::ipc::Events;
 use engine::watch::watch_config;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -25,7 +26,7 @@ fn setup_count(name: &str) -> (PathBuf, Arc<ArcSwap<Config>>, impl Drop, Arc<Ato
     let target = Arc::new(ArcSwap::from_pointee(load(&path).unwrap()));
     let count = Arc::new(AtomicUsize::new(0));
     let c = count.clone();
-    let w = watch_config(path.clone(), target.clone(), move |_| {
+    let w = watch_config(path.clone(), target.clone(), Events::none(), move |_| {
         c.fetch_add(1, Ordering::SeqCst);
     })
     .unwrap();
@@ -79,4 +80,33 @@ fn on_reload_called_only_for_valid() {
     std::fs::write(&path, &full[..full.len() / 2]).unwrap();
     std::thread::sleep(Duration::from_millis(600));
     assert_eq!(n.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn reload_and_reject_are_emitted() {
+    let dir = std::env::temp_dir().join(format!("macropad-watch-events-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.json");
+    std::fs::write(&path, json("AAA")).unwrap();
+    let target = Arc::new(ArcSwap::from_pointee(load(&path).unwrap()));
+    let (ev, rx) = Events::recording();
+    let _w = watch_config(path.clone(), target.clone(), ev, |_| {}).unwrap();
+    let next = || {
+        rx.recv_timeout(Duration::from_secs(5))
+            .expect("aucun evenement")
+    };
+    std::fs::write(&path, json("BBB")).unwrap();
+    assert_eq!(next(), "{\"type\":\"config\",\"ok\":true,\"error\":null}\n");
+    std::fs::write(&path, json("ab")).unwrap();
+    // Une notification en double peut encore produire un `ok: true` : on attend le rejet.
+    let rejected = loop {
+        let l = next();
+        if !l.contains("\"ok\":true") {
+            break l;
+        }
+    };
+    assert!(
+        rejected.starts_with("{\"type\":\"config\",\"ok\":false,\"error\":\""),
+        "{rejected}"
+    );
 }

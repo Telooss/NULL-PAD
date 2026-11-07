@@ -1,4 +1,5 @@
 use crate::config::{load, Config};
+use crate::ipc::{Event, Events};
 use arc_swap::ArcSwap;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::PathBuf;
@@ -8,9 +9,11 @@ use std::time::Duration;
 const DEBOUNCE: Duration = Duration::from_millis(150);
 
 /// Surveille le dossier (les editeurs remplacent le fichier) ; garder le watcher en vie.
+/// Chaque rechargement ou rejet est emis comme `Event::Config`.
 pub fn watch_config(
     path: PathBuf,
     target: Arc<ArcSwap<Config>>,
+    events: Events,
     on_reload: impl Fn(&Config) + Send + 'static,
 ) -> notify::Result<RecommendedWatcher> {
     let name = path.file_name().map(|n| n.to_owned());
@@ -37,8 +40,18 @@ pub fn watch_config(
                     on_reload(&c);
                     target.store(Arc::new(c));
                     tracing::info!("config reloaded");
+                    events.emit(&Event::Config {
+                        ok: true,
+                        error: None,
+                    });
                 }
-                Err(e) => tracing::warn!("config rejected: {e}"),
+                Err(e) => {
+                    tracing::warn!("config rejected: {e}");
+                    events.emit(&Event::Config {
+                        ok: false,
+                        error: Some(e.to_string()),
+                    });
+                }
             }
         }
     });
