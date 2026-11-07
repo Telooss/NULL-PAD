@@ -13,6 +13,60 @@ pub struct Config {
     pub profiles: Vec<Profile>,
     #[serde(default)]
     pub sound: SoundSettings,
+    #[serde(default)]
+    pub obs: ObsSettings,
+    #[serde(default)]
+    pub midi: MidiSettings,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[serde(default)]
+pub struct ObsSettings {
+    pub host: String,
+    pub port: u16,
+    pub password: Option<String>,
+}
+
+// Le mot de passe ne doit jamais atterrir dans un log.
+impl std::fmt::Debug for ObsSettings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ObsSettings")
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("password", &self.password.as_ref().map(|_| "***"))
+            .finish()
+    }
+}
+
+impl Default for ObsSettings {
+    fn default() -> Self {
+        Self {
+            host: "127.0.0.1".into(),
+            port: 4455,
+            password: None,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(default)]
+pub struct MidiSettings {
+    pub port: String,
+}
+
+impl Default for MidiSettings {
+    fn default() -> Self {
+        Self {
+            port: "NULL-PAD".into(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+pub enum ObsOp {
+    Start,
+    Stop,
+    Toggle,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -106,6 +160,13 @@ pub enum Action {
     StopSounds,
     SoundVolume { delta: i8 },
     SoundMute,
+    ObsScene { scene: String },
+    ObsMute { input: String },
+    ObsStream { op: ObsOp },
+    ObsRecord { op: ObsOp },
+    ObsReplaySave,
+    MidiNote { channel: u8, note: u8, velocity: u8 },
+    MidiCc { channel: u8, cc: u8, value: u8 },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -169,6 +230,21 @@ fn check_action(
         {
             Err(format!("delta {delta} hors -100..=100"))
         }
+        Action::ObsScene { scene: n } | Action::ObsMute { input: n } if n.is_empty() => {
+            Err("nom OBS vide".into())
+        }
+        Action::MidiNote { channel, .. } | Action::MidiCc { channel, .. }
+            if !(1..=16).contains(channel) =>
+        {
+            Err(format!("channel {channel} hors 1..=16"))
+        }
+        Action::MidiNote { note: v, .. } | Action::MidiCc { cc: v, .. } if *v > 127 => {
+            Err(format!("note/cc {v} hors 0..=127"))
+        }
+        Action::MidiNote { velocity, .. } if !(1..=127).contains(velocity) => {
+            Err(format!("velocity {velocity} hors 1..=127"))
+        }
+        Action::MidiCc { value, .. } if *value > 127 => Err(format!("value {value} hors 0..=127")),
         Action::Toggle { .. } if nested => Err("Toggle imbrique".into()),
         Action::Toggle { .. } if in_macro => Err("Toggle dans une Macro".into()),
         Action::Toggle { on, off } => {
@@ -195,6 +271,12 @@ fn validate(c: &Config) -> Result<(), String> {
         if !(50..=5000).contains(&ms) {
             return Err(format!("{name} {ms} hors 50..=5000"));
         }
+    }
+    if c.obs.port == 0 {
+        return Err("obs.port 0 hors 1..=65535".into());
+    }
+    if c.midi.port.is_empty() {
+        return Err("midi.port vide".into());
     }
     let s = &c.sound;
     for (name, v) in [
@@ -270,6 +352,8 @@ pub fn default_config() -> Config {
         version: 1,
         timing: Timing::default(),
         sound: SoundSettings::default(),
+        obs: ObsSettings::default(),
+        midi: MidiSettings::default(),
         profiles: vec![Profile {
             id: 1,
             name: "Default".into(),
@@ -315,5 +399,24 @@ impl Config {
                 hold: w.hold || b.trigger == Trigger::Hold,
                 double: w.double || b.trigger == Trigger::DoubleTap,
             })
+    }
+}
+
+#[cfg(test)]
+mod debug_tests {
+    use super::ObsSettings;
+
+    #[test]
+    fn obs_debug_hides_password() {
+        let s = ObsSettings {
+            password: Some("hunter2".into()),
+            ..Default::default()
+        };
+        let d = format!("{s:?}");
+        assert!(
+            !d.contains("hunter2") && d.contains("password: Some(\"***\")"),
+            "{d}"
+        );
+        assert!(format!("{:?}", ObsSettings::default()).contains("password: None"));
     }
 }

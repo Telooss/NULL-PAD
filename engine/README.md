@@ -117,6 +117,8 @@ Types d'action :
 - `StopSounds` : coupe tous les sons en cours.
 - `SoundVolume` : change le volume général de la soundboard de `delta` points (en %). `SoundMute` : bascule son mutisme.
 
+- `ObsScene` / `ObsMute` / `ObsStream` / `ObsRecord` / `ObsReplaySave` : pilotent OBS (voir OBS). `MidiNote` / `MidiCc` : envoient du MIDI (voir MIDI).
+
 ## Soundboard
 
 Le moteur joue des sons (mp3, wav, ogg, flac, 5 minutes au plus) dans le casque et dans un micro virtuel, [VB-Cable](https://vb-audio.com/Cable/). Section `sound` de la config (optionnelle, `version` reste 1) :
@@ -148,6 +150,34 @@ Mode micro (`mic_mode`) :
 - `App` : le moteur mélange lui-même le micro et les sons vers VB-Cable. Latence estimée sur la voix : 35–60 ms (période d'entrée + 15–50 ms de tampon + période de sortie), à confirmer à l'oreille ; micro muet si le moteur est fermé ; ne pas activer en plus « Écouter ce périphérique », sinon le micro est doublé. `MicVolume` / `MicMute` règlent alors le gain et la sourdine du micro de l'appli, et `master_volume` s'applique aussi à lui.
 
 Le volume réglé à la molette (général ou gain micro) vit en mémoire ; la valeur du fichier s'applique au démarrage et chaque fois qu'elle change dans le fichier.
+
+## OBS
+
+Le moteur pilote OBS par obs-websocket v5. Dans OBS : *Outils → Paramètres du serveur WebSocket*, activer le serveur (port 4455) et recopier le mot de passe dans la config. Sections et actions (optionnelles, `version` reste 1) :
+
+```json
+"obs": { "host": "127.0.0.1", "port": 4455, "password": "motdepasse" },
+...
+{ "input": "K01", "trigger": "Press", "action": { "type": "ObsScene", "scene": "Jeu" } },
+{ "input": "K02", "trigger": "Press", "action": { "type": "ObsMute", "input": "Micro" } },
+{ "input": "K03", "trigger": "Press", "action": { "type": "ObsStream", "op": "Toggle" } },
+{ "input": "K04", "trigger": "Press", "action": { "type": "ObsRecord", "op": "Toggle" } },
+{ "input": "K05", "trigger": "Press", "action": { "type": "ObsReplaySave" } }
+```
+
+`op` vaut `Start`, `Stop` ou `Toggle`. `password` est `null` si OBS n'en demande pas ; il n'est jamais écrit dans les logs. OBS fermé, mot de passe faux ou scène inconnue : un avertissement dans les logs, le moteur continue (une seule tentative de connexion par appui, délai 2 s, sans bloquer le pad ; les actions en attente pendant une panne sont abandonnées, jamais rejouées plus tard). Gardez `host` à `127.0.0.1` : `localhost` peut doubler le temps de connexion sous Windows. `ObsReplaySave` demande que le replay buffer (« Tampon de relecture » dans OBS en français) soit démarré dans OBS.
+
+## MIDI
+
+Le moteur envoie du MIDI vers un port existant, par défaut `NULL-PAD` (`"midi": { "port": "NULL-PAD" }`, nom cherché sans tenir compte de la casse, sous-chaîne acceptée ; il ne peut pas être vide).
+
+1. Installer [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html) et créer un port nommé `NULL-PAD` (ou une boucle Windows MIDI Services du même nom), et le laisser tourner.
+2. Dans Ableton : *Paramètres → Link, Tempo & MIDI*, activer l'entrée « Remote » du port `NULL-PAD` (pour le mapping) ; pour *jouer* un instrument avec `MidiNote`, activer aussi son entrée « Track ».
+3. Actions : `{ "type": "MidiNote", "channel": 1, "note": 60, "velocity": 100 }` et `{ "type": "MidiCc", "channel": 1, "cc": 20, "value": 1 }` (canal 1..16, note/CC/valeur 0..127, vélocité 1..127).
+
+Molette vers Ableton : lier le sens horaire à `MidiCc` avec `value` 1 et l'anti-horaire avec `value` 127 sur un même CC libre (par exemple CC 20 ; 1 et 127 sont les *valeurs* envoyées, pas le numéro de CC), puis dans Ableton mapper en mode « Relative (2's Comp.) ».
+
+Limite : `MidiNote` est un tap (note on puis note off tout de suite), pas une note tenue.
 
 ## Molettes
 
@@ -204,4 +234,10 @@ Le test automatique (`cargo test -p engine`, dont `tests/e2e.rs`) couvre appui, 
 - [ ] Mode `App` : voix audible dans « CABLE Output », molette droite = gain, clic = sourdine, latence ressentie
 - [ ] Latence ressentie d'un son (appui → son dans le casque)
 - [ ] Le PC se met-il encore en veille tout seul quand le moteur tourne avec au moins un son configuré ? (`powercfg /requests` doit ne pas lister le moteur)
+- [ ] OBS : scène, mute, stream, enregistrement et replay se déclenchent depuis le pad
+- [ ] OBS fermé puis rouvert : l'action suivante fonctionne, sans figer le pad
+- [ ] OBS avec un mauvais mot de passe : avertissement dans les logs, rien d'autre
+- [ ] MIDI : une note et un CC arrivent dans Ableton (moniteur MIDI)
+- [ ] Molette en CC relatif (1 / 127) : le paramètre Ableton monte et descend
+- [ ] loopMIDI fermé puis relancé : les envois reprennent (port rouvert)
 - [ ] Config rechargée à l'enregistrement ; une config cassée est ignorée (voir les logs) et l'ancienne reste active
