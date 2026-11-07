@@ -98,6 +98,7 @@ pub fn start_obs() -> ObsHandle {
                     match connect(&settings) {
                         Ok(ws) => conn = Some(ws),
                         Err(e) => {
+                            // Par conception, une action envoyee pendant un echec de connexion est abandonnee.
                             // Les actions en attente seraient rejouees trop tard (ex. Toggle de stream).
                             let dropped = rx.try_iter().count();
                             tracing::warn!(
@@ -423,8 +424,16 @@ mod tests {
         let (tx2, rx2) = mpsc::channel();
         let _srv2 = fake_obs(l2, Some("bon"), 1, 1, tx2);
         obs.apply(&settings(port2, Some("bon")));
-        obs.send(scene("Apres"));
-        let req = rx2.recv_timeout(WAIT).expect("le thread OBS a survecu");
+        // Une action envoyee pendant l'echec en cours est abandonnee : on renvoie jusqu'a reussite.
+        let mut got = None;
+        for _ in 0..20 {
+            obs.send(scene("Apres"));
+            if let Ok(r) = rx2.recv_timeout(Duration::from_millis(500)) {
+                got = Some(r);
+                break;
+            }
+        }
+        let req = got.expect("le thread OBS a survecu");
         assert_eq!(req["d"]["requestData"]["sceneName"], "Apres");
         assert!(
             rx.try_recv().is_err(),

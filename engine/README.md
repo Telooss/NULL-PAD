@@ -165,7 +165,7 @@ Le moteur pilote OBS par obs-websocket v5. Dans OBS : *Outils → Paramètres du
 { "input": "K05", "trigger": "Press", "action": { "type": "ObsReplaySave" } }
 ```
 
-`op` vaut `Start`, `Stop` ou `Toggle`. `password` est `null` si OBS n'en demande pas ; il n'est jamais écrit dans les logs. OBS fermé, mot de passe faux ou scène inconnue : un avertissement dans les logs, le moteur continue (une seule tentative de connexion par appui, délai 2 s, sans bloquer le pad ; les actions en attente pendant une panne sont abandonnées, jamais rejouées plus tard). Gardez `host` à `127.0.0.1` : `localhost` peut doubler le temps de connexion sous Windows. `ObsReplaySave` demande que que le replay buffer (« Tampon de relecture » dans OBS en français) soit démarré dans OBS.
+`op` vaut `Start`, `Stop` ou `Toggle`. `password` est `null` si OBS n'en demande pas ; il n'est jamais écrit dans les logs. OBS fermé, mot de passe faux ou scène inconnue : un avertissement dans les logs, le moteur continue (une seule tentative de connexion par appui, délai 2 s, sans bloquer le pad ; les actions en attente pendant une panne sont abandonnées, jamais rejouées plus tard). Gardez `host` à `127.0.0.1` : `localhost` peut doubler le temps de connexion sous Windows. `ObsReplaySave` demande que le replay buffer (« Tampon de relecture » dans OBS en français) soit démarré dans OBS.
 
 ## MIDI
 
