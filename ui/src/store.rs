@@ -1,5 +1,6 @@
 //! Config sur le disque : chargement, validation (regles du moteur) et ecriture atomique.
 use crate::native;
+use crate::studio::model::{PadBinding, PadModel};
 use engine::config::Config;
 use std::fs::{self, File};
 use std::io::Write;
@@ -9,14 +10,24 @@ pub fn load(path: &Path) -> Result<Config, String> {
     engine::config::load(path).map_err(|e| e.to_string())
 }
 
-/// Regles du moteur (`config::parse`), plus : aucune liaison sur une touche native du firmware.
-pub fn validate(json: &str) -> Result<(), String> {
+/// Entree native ? Avec un pad lu : tout sauf `Action{profil, entree}` ; sinon la table du firmware.
+fn is_native(pad: Option<&PadModel>, profile: u8, input: u8) -> bool {
+    let layer = pad.and_then(|m| m.layers.get(usize::from(profile).wrapping_sub(1)));
+    match layer {
+        Some(l) => l.bindings.get(usize::from(input))
+            != Some(&PadBinding::Action { profile, input }),
+        None => native::is_native(native::KEYMAP, profile, input),
+    }
+}
+
+/// Regles du moteur (`config::parse`), plus : aucune liaison sur une touche native (du pad lu, sinon du firmware).
+pub fn validate(json: &str, pad: Option<&PadModel>) -> Result<(), String> {
     let c = engine::config::parse(json).map_err(|e| e.to_string())?;
     for p in &c.profiles {
         if let Some(b) = p
             .bindings
             .iter()
-            .find(|b| native::is_native(native::KEYMAP, p.id, b.input.0))
+            .find(|b| is_native(pad, p.id, b.input.0))
         {
             return Err(format!(
                 "touche native du firmware : {} (profil {}), modifiable plus tard depuis le pad",
@@ -28,9 +39,14 @@ pub fn validate(json: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Valide, ecrit `<nom>.tmp` a cote, le vide sur le disque, puis le renomme sur `path`.
-pub fn save_atomic(path: &Path, json: &str) -> Result<(), String> {
-    validate(json)?;
+/// Valide, puis `write_atomic`.
+pub fn save_atomic(path: &Path, json: &str, pad: Option<&PadModel>) -> Result<(), String> {
+    validate(json, pad)?;
+    write_atomic(path, json)
+}
+
+/// Ecrit `<nom>.tmp` a cote, le vide sur le disque, puis le renomme sur `path`.
+pub fn write_atomic(path: &Path, json: &str) -> Result<(), String> {
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
@@ -70,9 +86,9 @@ mod tests {
         let dir = temp_dir("save");
         let path = dir.join("config.json");
         let good = valid_json();
-        save_atomic(&path, &good).unwrap();
+        save_atomic(&path, &good, None).unwrap();
         assert_eq!(fs::read_to_string(&path).unwrap(), good);
-        assert!(save_atomic(&path, "{\"version\":1").is_err());
+        assert!(save_atomic(&path, "{\"version\":1", None).is_err());
         assert_eq!(fs::read_to_string(&path).unwrap(), good);
         assert!(!dir.join("config.json.tmp").exists());
         assert_eq!(load(&path).unwrap(), default_config());
@@ -81,11 +97,11 @@ mod tests {
 
     #[test]
     fn validate_rejects_bad_json_and_rules() {
-        assert!(validate(&valid_json()).is_ok());
-        assert!(validate("pas du json").unwrap_err().starts_with("json:"));
+        assert!(validate(&valid_json(), None).is_ok());
+        assert!(validate("pas du json", None).unwrap_err().starts_with("json:"));
         let mut c = default_config();
         c.profiles[0].tag = "trop long".into();
-        let e = validate(&serde_json::to_string(&c).unwrap()).unwrap_err();
+        let e = validate(&serde_json::to_string(&c).unwrap(), None).unwrap_err();
         assert!(e.starts_with("config invalide:"), "{e}");
     }
 
@@ -97,11 +113,29 @@ mod tests {
             let mut b = c.profiles[0].bindings[2].clone(); // MicMute sur appui
             b.input = engine::codes::InputId::from_name(input).unwrap();
             c.profiles[0].bindings.push(b);
-            validate(&serde_json::to_string(&c).unwrap())
+            validate(&serde_json::to_string(&c).unwrap(), None)
         };
         assert!(with(1, "K04").unwrap_err().contains("K04"));
         assert!(with(2, "M1").unwrap_err().contains("M1"));
         assert!(with(1, "K11").is_ok());
         assert!(with(2, "K04").is_ok());
+    }
+
+    #[test]
+    fn validate_uses_the_pad_when_given() {
+        use crate::studio::model::{default_layer, PadLayer};
+        let mut pad = PadModel {
+            layers: (1..=8)
+                .map(|p| PadLayer { id: u32::from(p) - 1, name: "X".into(), bindings: default_layer(p) })
+                .collect(),
+        };
+        pad.layers[0].bindings[4] = PadBinding::Action { profile: 1, input: 4 };
+        let mut c = default_config();
+        let mut b = c.profiles[0].bindings[2].clone();
+        b.input = engine::codes::InputId::from_name("K04").unwrap();
+        c.profiles[0].bindings.push(b);
+        let json = serde_json::to_string(&c).unwrap();
+        assert!(validate(&json, Some(&pad)).is_ok());
+        assert!(validate(&json, None).is_err());
     }
 }
