@@ -19,7 +19,7 @@ Le moteur s'appelle `nullctl-engine.exe` ; l'interface, `nullctl.exe`, est dans 
 
 Données : `%APPDATA%\nullctl\`. Au démarrage, si `%APPDATA%\NULL-PAD\config.json` existe et pas la nouvelle config, le dossier `NULL-PAD` est migré vers `nullctl`.
 
-Interface : le moteur ouvre deux tubes nommés, réservés à l'utilisateur courant. `\.\pipe\nullctl-events` envoie à l'interface une ligne JSON par événement (touche, `action`, profil actif, lien USB/BLE, config rechargée) sans jamais bloquer le moteur ; `\.\pipe\nullctl-control` reçoit ses commandes. Fermer l'interface n'arrête pas le moteur.
+Interface : le moteur ouvre deux tubes nommés, réservés à l'utilisateur courant. `\\.\pipe\nullctl-events` envoie à l'interface une ligne JSON par événement (touche, `action`, profil actif, lien USB/BLE, config rechargée) sans jamais bloquer le moteur ; `\\.\pipe\nullctl-control` reçoit ses commandes. Fermer l'interface n'arrête pas le moteur.
 
 Au tout premier lancement (pas de config), le moteur écrit une config par défaut et active le démarrage avec Windows. Une seule instance tourne à la fois.
 
