@@ -73,19 +73,23 @@ fn slow_client_never_blocks() {
     let name = pipe_name();
     let ev = serve_events(&name).unwrap();
     let _never_read = connect(&name, &ev, 1);
-    let t0 = Instant::now();
-    for i in 0..10_000u32 {
-        ev.emit(&Event::Key {
-            input: "K00".into(),
-            down: i % 2 == 0,
-            profile: 1,
-        });
-    }
-    assert!(
-        t0.elapsed() < Duration::from_millis(200),
-        "{:?}",
-        t0.elapsed()
-    );
+    // Dans un thread : une regression (emit bloque) echoue au lieu de bloquer le test.
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        let t0 = Instant::now();
+        for i in 0..10_000u32 {
+            ev.emit(&Event::Key {
+                input: "K00".into(),
+                down: i % 2 == 0,
+                profile: 1,
+            });
+        }
+        tx.send(t0.elapsed()).unwrap();
+    });
+    let took = rx
+        .recv_timeout(WAIT)
+        .expect("emit bloque par un client lent");
+    assert!(took < Duration::from_millis(200), "{took:?}");
 }
 
 #[test]

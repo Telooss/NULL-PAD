@@ -6,8 +6,15 @@ use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TrySendError};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use windows::core::HSTRING;
-use windows::Win32::Foundation::{CloseHandle, ERROR_PIPE_CONNECTED, HANDLE};
+use windows::core::{HSTRING, PWSTR};
+use windows::Win32::Foundation::{CloseHandle, LocalFree, ERROR_PIPE_CONNECTED, HANDLE, HLOCAL};
+use windows::Win32::Security::Authorization::{
+    ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
+};
+use windows::Win32::Security::{
+    GetTokenInformation, TokenUser, PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES, TOKEN_QUERY,
+    TOKEN_USER,
+};
 use windows::Win32::Storage::FileSystem::{
     WriteFile, FILE_FLAGS_AND_ATTRIBUTES, FILE_FLAG_FIRST_PIPE_INSTANCE, PIPE_ACCESS_OUTBOUND,
 };
@@ -15,6 +22,7 @@ use windows::Win32::System::Pipes::{
     ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, PIPE_REJECT_REMOTE_CLIENTS,
     PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, PIPE_WAIT,
 };
+use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
 pub const EVENTS_PIPE: &str = r"\\.\pipe\nullctl-events";
 /// Lignes en attente par client ; au-dela, le client perd les suivantes.
@@ -72,7 +80,8 @@ impl Events {
         Self::default()
     }
 
-    /// Pour les tests : un faux client qui recoit chaque ligne sur le Receiver.
+    /// Aide de test : un faux client qui recoit chaque ligne sur le Receiver.
+    #[doc(hidden)]
     pub fn recording() -> (Self, Receiver<String>) {
         let ev = Self::default();
         let (tx, rx) = sync_channel(4096);
@@ -111,6 +120,68 @@ impl Events {
     }
 }
 
+/// Lit une chaine allouee par Windows, puis la libere avec LocalFree.
+fn take_local_wstr(s: PWSTR) -> io::Result<String> {
+    let out = unsafe { s.to_string() }.map_err(io::Error::other);
+    unsafe { LocalFree(Some(HLOCAL(s.0.cast()))) };
+    out
+}
+
+/// SID texte (S-1-5-21-...) de l'utilisateur du processus, lu dans son jeton.
+pub fn current_user_sid() -> io::Result<String> {
+    unsafe {
+        let mut token = HANDLE::default();
+        OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token)?;
+        let mut len = 0u32;
+        let _ = GetTokenInformation(token, TokenUser, None, 0, &mut len);
+        // Vec<u64> : tampon aligne pour TOKEN_USER.
+        let mut buf = vec![0u64; (len as usize).div_ceil(8)];
+        let res = GetTokenInformation(
+            token,
+            TokenUser,
+            Some(buf.as_mut_ptr().cast()),
+            len,
+            &mut len,
+        );
+        let _ = CloseHandle(token);
+        res?;
+        let user = &*(buf.as_ptr() as *const TOKEN_USER);
+        let mut s = PWSTR::null();
+        ConvertSidToStringSidW(user.User.Sid, &mut s)?;
+        take_local_wstr(s)
+    }
+}
+
+/// SECURITY_ATTRIBUTES dont le DACL protege n'autorise que l'utilisateur courant (pipes du moteur).
+pub struct OwnedSa(SECURITY_ATTRIBUTES);
+// SAFETY : le descripteur est immuable et libere une seule fois, au drop.
+unsafe impl Send for OwnedSa {}
+unsafe impl Sync for OwnedSa {}
+impl OwnedSa {
+    pub fn as_ptr(&self) -> *const SECURITY_ATTRIBUTES {
+        &self.0
+    }
+}
+impl Drop for OwnedSa {
+    fn drop(&mut self) {
+        unsafe { LocalFree(Some(HLOCAL(self.0.lpSecurityDescriptor))) };
+    }
+}
+
+/// Sans cela le DACL par defaut laisse Tout le monde et Anonyme lire le pipe.
+pub fn current_user_sa() -> io::Result<OwnedSa> {
+    let sddl = HSTRING::from(format!("D:P(A;;GA;;;{})", current_user_sid()?));
+    let mut sd = PSECURITY_DESCRIPTOR(std::ptr::null_mut());
+    unsafe {
+        ConvertStringSecurityDescriptorToSecurityDescriptorW(&sddl, SDDL_REVISION_1, &mut sd, None)?
+    };
+    Ok(OwnedSa(SECURITY_ATTRIBUTES {
+        nLength: size_of::<SECURITY_ATTRIBUTES>() as u32,
+        lpSecurityDescriptor: sd.0,
+        bInheritHandle: false.into(),
+    }))
+}
+
 /// Handle de pipe ferme au drop ; deplace dans le thread d'ecriture du client.
 struct Pipe(HANDLE);
 // SAFETY : un handle de pipe peut etre utilise depuis n'importe quel thread.
@@ -124,7 +195,7 @@ impl Drop for Pipe {
     }
 }
 
-fn create(name: &HSTRING, first: bool) -> io::Result<Pipe> {
+fn create(name: &HSTRING, first: bool, sa: &OwnedSa) -> io::Result<Pipe> {
     let mode = if first {
         PIPE_ACCESS_OUTBOUND | FILE_FLAG_FIRST_PIPE_INSTANCE
     } else {
@@ -139,7 +210,7 @@ fn create(name: &HSTRING, first: bool) -> io::Result<Pipe> {
             64 * 1024,
             0,
             0,
-            None,
+            Some(sa.as_ptr()),
         )
     };
     if h.is_invalid() {
@@ -152,7 +223,8 @@ fn create(name: &HSTRING, first: bool) -> io::Result<Pipe> {
 /// Cree le pipe (echoue si le nom est deja pris) et accepte les clients dans un thread.
 pub fn serve_events(name: &str) -> io::Result<Events> {
     let name = HSTRING::from(name);
-    let mut pipe = create(&name, true)?;
+    let sa = current_user_sa()?;
+    let mut pipe = create(&name, true, &sa)?;
     let events = Events::default();
     let ev = events.clone();
     thread::spawn(move || loop {
@@ -164,6 +236,7 @@ pub fn serve_events(name: &str) -> io::Result<Events> {
         if connected {
             let (tx, rx) = sync_channel::<String>(QUEUE);
             ev.0.clients.lock().unwrap().push(tx);
+            // Un client qui ne lit jamais garde ce thread et ses tampons bornes jusqu'a sa deconnexion (accepte).
             thread::spawn(move || {
                 let pipe = pipe; // capture tout le Pipe (Send), pas seulement son HANDLE
                 let mut written = 0u32; // obligatoire sans OVERLAPPED
@@ -178,7 +251,7 @@ pub fn serve_events(name: &str) -> io::Result<Events> {
             });
         }
         pipe = loop {
-            match create(&name, false) {
+            match create(&name, false, &sa) {
                 Ok(p) => break p,
                 Err(e) => {
                     tracing::warn!("pipe d'evenements: {e}");
@@ -196,6 +269,61 @@ mod tests {
 
     fn json(e: Event) -> String {
         serde_json::to_string(&e).unwrap()
+    }
+
+    /// DACL du pipe en SDDL, lu sur le handle serveur.
+    fn dacl_sddl(h: HANDLE) -> String {
+        use windows::Win32::Foundation::ERROR_SUCCESS;
+        use windows::Win32::Security::Authorization::{
+            ConvertSecurityDescriptorToStringSecurityDescriptorW, GetSecurityInfo, SE_KERNEL_OBJECT,
+        };
+        use windows::Win32::Security::DACL_SECURITY_INFORMATION;
+        let mut sd = PSECURITY_DESCRIPTOR(std::ptr::null_mut());
+        let err = unsafe {
+            GetSecurityInfo(
+                h,
+                SE_KERNEL_OBJECT,
+                DACL_SECURITY_INFORMATION,
+                None,
+                None,
+                None,
+                None,
+                Some(&mut sd),
+            )
+        };
+        assert_eq!(err, ERROR_SUCCESS);
+        let mut s = PWSTR::null();
+        let res = unsafe {
+            ConvertSecurityDescriptorToStringSecurityDescriptorW(
+                sd,
+                SDDL_REVISION_1,
+                DACL_SECURITY_INFORMATION,
+                &mut s,
+                None,
+            )
+        };
+        unsafe { LocalFree(Some(HLOCAL(sd.0))) };
+        res.unwrap();
+        take_local_wstr(s).unwrap()
+    }
+
+    #[test]
+    fn pipe_dacl_grants_only_current_user() {
+        let sid = current_user_sid().unwrap();
+        assert!(sid.starts_with("S-1-"), "{sid}");
+        let name = HSTRING::from(format!(r"\\.\pipe\nullctl-dacl-{}", std::process::id()));
+        let sa = current_user_sa().unwrap();
+        let mut keep = Vec::new(); // garde l'instance : la suivante n'est pas la premiere
+        for first in [true, false] {
+            let pipe = create(&name, first, &sa).unwrap();
+            let dacl = dacl_sddl(pipe.0);
+            // Protege (P), une seule ACE, qui autorise ce SID et personne d'autre.
+            assert!(dacl.starts_with("D:P("), "{dacl}");
+            assert_eq!(dacl.matches('(').count(), 1, "{dacl}");
+            assert!(dacl.starts_with("D:P(A;;"), "{dacl}");
+            assert!(dacl.ends_with(&format!(";;;{sid})")), "{dacl}");
+            keep.push(pipe);
+        }
     }
 
     #[test]
