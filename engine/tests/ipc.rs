@@ -124,3 +124,106 @@ fn second_server_on_same_name_fails() {
     let _ev = serve_events(&name).unwrap();
     assert!(serve_events(&name).is_err());
 }
+
+mod control {
+    use super::*;
+    use engine::ipc::{serve_control, Request, Response};
+    use serde_json::json;
+    use std::io::Write;
+
+    fn dummy(r: Request) -> Response {
+        match r {
+            Request::Status => Response {
+                ok: true,
+                error: None,
+                data: Some(json!({"profile": 2, "link": "usb", "version": "x"})),
+            },
+            _ => Response {
+                ok: false,
+                error: Some("non".into()),
+                data: None,
+            },
+        }
+    }
+
+    fn client(name: &str) -> File {
+        let end = Instant::now() + WAIT;
+        loop {
+            match File::options().read(true).write(true).open(name) {
+                Ok(f) => return f,
+                Err(e) if Instant::now() > end => panic!("open {name}: {e}"),
+                Err(_) => thread::sleep(Duration::from_millis(10)),
+            }
+        }
+    }
+
+    /// Une requete, une ligne de reponse (lue dans un thread pour ne jamais bloquer le test).
+    fn ask(f: &mut File, line: &str) -> String {
+        f.write_all(line.as_bytes()).unwrap();
+        let r = BufReader::new(f.try_clone().unwrap());
+        read_line(r)
+    }
+
+    #[test]
+    fn status_roundtrip() {
+        let name = pipe_name();
+        serve_control(&name, dummy).unwrap();
+        let mut c = client(&name);
+        let got = ask(&mut c, "{\"cmd\":\"status\"}\n");
+        assert_eq!(
+            got,
+            "{\"ok\":true,\"data\":{\"link\":\"usb\",\"profile\":2,\"version\":\"x\"}}\n"
+        );
+        // La connexion reste ouverte : une deuxieme requete passe.
+        assert!(ask(&mut c, "{\"cmd\":\"test_obs\"}\n").contains("\"ok\":false"));
+    }
+
+    #[test]
+    fn bad_request_gets_error() {
+        let name = pipe_name();
+        serve_control(&name, dummy).unwrap();
+        let mut c = client(&name);
+        let want = "{\"ok\":false,\"error\":\"requete invalide\"}\n";
+        assert_eq!(ask(&mut c, "pas du json\n"), want);
+        assert_eq!(ask(&mut c, "{\"cmd\":\"inconnu\"}\n"), want);
+        // Toujours en vie apres une requete illisible.
+        assert!(ask(&mut c, "{\"cmd\":\"status\"}\n").starts_with("{\"ok\":true"));
+    }
+
+    #[test]
+    fn oversized_line_errors_and_disconnects() {
+        let name = pipe_name();
+        serve_control(&name, dummy).unwrap();
+        let mut c = client(&name);
+        let long = format!("{}\n", "a".repeat(5000));
+        assert_eq!(
+            ask(&mut c, &long),
+            "{\"ok\":false,\"error\":\"requete invalide\"}\n"
+        );
+        let mut rest = String::new();
+        let r = BufReader::new(c);
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            let mut r = r;
+            tx.send(r.read_line(&mut rest).unwrap_or(0)).unwrap();
+        });
+        assert_eq!(rx.recv_timeout(WAIT).expect("pas deconnecte"), 0);
+    }
+
+    #[test]
+    fn two_clients_in_parallel() {
+        let name = pipe_name();
+        serve_control(&name, dummy).unwrap();
+        let mut a = client(&name);
+        let mut b = client(&name); // `a` est connecte et muet : `b` n'attend pas
+        assert!(ask(&mut b, "{\"cmd\":\"status\"}\n").starts_with("{\"ok\":true"));
+        assert!(ask(&mut a, "{\"cmd\":\"status\"}\n").starts_with("{\"ok\":true"));
+    }
+
+    #[test]
+    fn second_server_on_same_name_fails() {
+        let name = pipe_name();
+        serve_control(&name, dummy).unwrap();
+        assert!(serve_control(&name, dummy).is_err());
+    }
+}

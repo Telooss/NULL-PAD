@@ -1,6 +1,6 @@
 //! Pipe d'evenements vers l'interface : une ligne JSON par evenement, sans jamais bloquer le moteur.
 use crate::triggers::Trigger;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::io;
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TrySendError};
 use std::sync::{Arc, Mutex};
@@ -16,7 +16,8 @@ use windows::Win32::Security::{
     TOKEN_USER,
 };
 use windows::Win32::Storage::FileSystem::{
-    WriteFile, FILE_FLAGS_AND_ATTRIBUTES, FILE_FLAG_FIRST_PIPE_INSTANCE, PIPE_ACCESS_OUTBOUND,
+    FlushFileBuffers, ReadFile, WriteFile, FILE_FLAGS_AND_ATTRIBUTES,
+    FILE_FLAG_FIRST_PIPE_INSTANCE, PIPE_ACCESS_DUPLEX, PIPE_ACCESS_OUTBOUND,
 };
 use windows::Win32::System::Pipes::{
     ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, PIPE_REJECT_REMOTE_CLIENTS,
@@ -25,6 +26,9 @@ use windows::Win32::System::Pipes::{
 use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
 pub const EVENTS_PIPE: &str = r"\\.\pipe\nullctl-events";
+pub const CONTROL_PIPE: &str = r"\\.\pipe\nullctl-control";
+/// Taille maximale d'une ligne de requete.
+const MAX_LINE: usize = 4096;
 /// Lignes en attente par client ; au-dela, le client perd les suivantes.
 const QUEUE: usize = 256;
 
@@ -195,11 +199,16 @@ impl Drop for Pipe {
     }
 }
 
-fn create(name: &HSTRING, first: bool, sa: &OwnedSa) -> io::Result<Pipe> {
-    let mode = if first {
-        PIPE_ACCESS_OUTBOUND | FILE_FLAG_FIRST_PIPE_INSTANCE
+fn create(name: &HSTRING, first: bool, sa: &OwnedSa, duplex: bool) -> io::Result<Pipe> {
+    let access = if duplex {
+        PIPE_ACCESS_DUPLEX
     } else {
-        PIPE_ACCESS_OUTBOUND | FILE_FLAGS_AND_ATTRIBUTES(0)
+        PIPE_ACCESS_OUTBOUND
+    };
+    let mode = if first {
+        access | FILE_FLAG_FIRST_PIPE_INSTANCE
+    } else {
+        access | FILE_FLAGS_AND_ATTRIBUTES(0)
     };
     let h = unsafe {
         CreateNamedPipeW(
@@ -224,7 +233,7 @@ fn create(name: &HSTRING, first: bool, sa: &OwnedSa) -> io::Result<Pipe> {
 pub fn serve_events(name: &str) -> io::Result<Events> {
     let name = HSTRING::from(name);
     let sa = current_user_sa()?;
-    let mut pipe = create(&name, true, &sa)?;
+    let mut pipe = create(&name, true, &sa, false)?;
     let events = Events::default();
     let ev = events.clone();
     thread::spawn(move || loop {
@@ -251,7 +260,7 @@ pub fn serve_events(name: &str) -> io::Result<Events> {
             });
         }
         pipe = loop {
-            match create(&name, false, &sa) {
+            match create(&name, false, &sa, false) {
                 Ok(p) => break p,
                 Err(e) => {
                     tracing::warn!("pipe d'evenements: {e}");
@@ -261,6 +270,125 @@ pub fn serve_events(name: &str) -> io::Result<Events> {
         };
     });
     Ok(events)
+}
+
+#[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(tag = "cmd", rename_all = "snake_case")]
+pub enum Request {
+    Status,
+    TestObs,
+    TestMidi,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct Response {
+    pub ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub data: Option<serde_json::Value>,
+}
+
+impl Response {
+    pub fn ok(data: Option<serde_json::Value>) -> Self {
+        Self {
+            ok: true,
+            error: None,
+            data,
+        }
+    }
+    pub fn err(e: impl Into<String>) -> Self {
+        Self {
+            ok: false,
+            error: Some(e.into()),
+            data: None,
+        }
+    }
+}
+
+fn write_all(pipe: &Pipe, line: &str) -> bool {
+    let mut buf = line.as_bytes();
+    while !buf.is_empty() {
+        let mut n = 0u32;
+        if unsafe { WriteFile(pipe.0, Some(buf), Some(&mut n), None) }.is_err() || n == 0 {
+            return false;
+        }
+        buf = &buf[n as usize..];
+    }
+    true
+}
+
+/// Boucle d'un client : une ligne lue -> une ligne ecrite, jusqu'a la deconnexion.
+fn serve_client(pipe: Pipe, handler: &(dyn Fn(Request) -> Response + Send + Sync)) {
+    let mut pending: Vec<u8> = Vec::new();
+    let mut chunk = [0u8; 1024];
+    loop {
+        while let Some(i) = pending.iter().position(|&b| b == b'\n') {
+            let line: Vec<u8> = pending.drain(..=i).collect();
+            let resp = if line.len() > MAX_LINE {
+                Response::err("requete invalide")
+            } else {
+                match serde_json::from_slice::<Request>(&line) {
+                    Ok(r) => handler(r),
+                    Err(_) => Response::err("requete invalide"),
+                }
+            };
+            let mut out = serde_json::to_string(&resp).unwrap_or_default();
+            out.push('\n');
+            if !write_all(&pipe, &out) {
+                return;
+            }
+            if line.len() > MAX_LINE {
+                let _ = unsafe { FlushFileBuffers(pipe.0) }; // sinon Disconnect jette la reponse
+                return;
+            }
+        }
+        if pending.len() > MAX_LINE {
+            let _ = write_all(&pipe, "{\"ok\":false,\"error\":\"requete invalide\"}\n");
+            let _ = unsafe { FlushFileBuffers(pipe.0) };
+            return;
+        }
+        let mut n = 0u32;
+        if unsafe { ReadFile(pipe.0, Some(&mut chunk), Some(&mut n), None) }.is_err() || n == 0 {
+            return;
+        }
+        pending.extend_from_slice(&chunk[..n as usize]);
+    }
+}
+
+/// Pipe duplex de controle : un thread par client, la requete est traitee sur ce thread.
+/// Echoue si le nom est deja pris.
+pub fn serve_control(
+    name: &str,
+    handler: impl Fn(Request) -> Response + Send + Sync + 'static,
+) -> io::Result<()> {
+    let name = HSTRING::from(name);
+    let sa = current_user_sa()?;
+    let mut pipe = create(&name, true, &sa, true)?;
+    let handler: Arc<dyn Fn(Request) -> Response + Send + Sync> = Arc::new(handler);
+    thread::spawn(move || loop {
+        let connected = match unsafe { ConnectNamedPipe(pipe.0, None) } {
+            Ok(()) => true,
+            Err(e) => e.code() == ERROR_PIPE_CONNECTED.to_hresult(),
+        };
+        if connected {
+            let h = handler.clone();
+            thread::spawn(move || {
+                let pipe = pipe;
+                serve_client(pipe, &*h);
+            });
+        }
+        pipe = loop {
+            match create(&name, false, &sa, true) {
+                Ok(p) => break p,
+                Err(e) => {
+                    tracing::warn!("pipe de controle: {e}");
+                    thread::sleep(Duration::from_secs(1));
+                }
+            }
+        };
+    });
+    Ok(())
 }
 
 #[cfg(test)]
@@ -312,10 +440,11 @@ mod tests {
         let sid = current_user_sid().unwrap();
         assert!(sid.starts_with("S-1-"), "{sid}");
         let name = HSTRING::from(format!(r"\\.\pipe\nullctl-dacl-{}", std::process::id()));
+        let name2 = HSTRING::from(format!(r"\\.\pipe\nullctl-dacl2-{}", std::process::id()));
         let sa = current_user_sa().unwrap();
         let mut keep = Vec::new(); // garde l'instance : la suivante n'est pas la premiere
-        for first in [true, false] {
-            let pipe = create(&name, first, &sa).unwrap();
+        for (first, duplex) in [(true, false), (false, false), (true, true), (false, true)] {
+            let pipe = create(if duplex { &name2 } else { &name }, first, &sa, duplex).unwrap();
             let dacl = dacl_sddl(pipe.0);
             // Protege (P), une seule ACE, qui autorise ce SID et personne d'autre.
             assert!(dacl.starts_with("D:P("), "{dacl}");

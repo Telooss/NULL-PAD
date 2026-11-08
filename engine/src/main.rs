@@ -4,9 +4,11 @@ use engine::autostart::{migrate_autostart, set_autostart};
 use engine::config::{default_config, load, save_default_if_missing};
 use engine::dispatch::{Dispatcher, SystemExecutor};
 use engine::input_win::{run_raw_input, DeviceFilter};
-use engine::ipc::{serve_events, Events, EVENTS_PIPE};
-use engine::midi::Midi;
-use engine::obs::start_obs;
+use engine::ipc::{
+    serve_control, serve_events, Events, Request, Response, CONTROL_PIPE, EVENTS_PIPE,
+};
+use engine::midi::{cc, Midi};
+use engine::obs::{start_obs, test_connection};
 use engine::paths::{config_path, migrate_app_dir, APP_DIR, OLD_APP_DIR};
 use engine::sim::run_simulation;
 use engine::sound::board::Soundboard;
@@ -121,6 +123,27 @@ fn main() {
         tracing::warn!("pipe d'evenements indisponible: {e}");
         Events::none()
     });
+    {
+        let (config, events, midi) = (config.clone(), events.clone(), midi.clone());
+        let res = serve_control(CONTROL_PIPE, move |req| match req {
+            Request::Status => Response::ok(Some(serde_json::json!({
+                "profile": events.last_profile(),
+                "link": events.last_link(),
+                "version": env!("CARGO_PKG_VERSION"),
+            }))),
+            Request::TestObs => match test_connection(&config.load().obs) {
+                Ok(()) => Response::ok(None),
+                Err(e) => Response::err(e),
+            },
+            Request::TestMidi => match midi.send(&[cc(1, 127, 0)]) {
+                Ok(()) => Response::ok(None),
+                Err(e) => Response::err(e),
+            },
+        });
+        if let Err(e) = res {
+            tracing::warn!("pipe de controle indisponible: {e}");
+        }
+    }
     let (b, a, o, m) = (board.clone(), audio.clone(), obs.clone(), midi.clone());
     // Garde le watcher en vie jusqu'a la fin du programme.
     let _watcher = watch_config(path.clone(), config.clone(), events.clone(), move |c| {
