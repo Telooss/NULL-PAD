@@ -100,3 +100,9 @@ textarea.nc-input { resize: vertical; }
 .nc-settings .nc-panel-head { justify-content: space-between; }
 .nc-settings .nc-panel-foot { justify-content: flex-end; }
 .nc-ellipsis { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Effets coupes : tout reste visible et utilisable, sans decor ni animation. */
+.no-fx::before, .no-fx .nc-stage::before, .no-fx .cp-left::before,
+.no-fx .nc-w98, .no-fx .nc-tape, .no-fx .nc-reg, .no-fx .nc-barcode, .no-fx .nc-star, .no-fx .cp-ghost { display: none !important; }
+.no-fx .nc-glitch, .no-fx .nc-glitch::after { animation: none !important; filter: none !important; }
+.no-fx .nc-glitch::after { display: none; }

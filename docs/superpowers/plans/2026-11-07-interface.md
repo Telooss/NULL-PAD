@@ -202,8 +202,8 @@
   - Extensions :
     - `.mp3`, `.wav`, `.ogg`, `.flac` → `{type:"Sound", id}`, avec un nouveau `SoundDef` à ajouter (id = nom de fichier en minuscules, `[a-z0-9-]`, rendu unique : `-2`, `-3`…) ;
     - `.exe`, `.lnk` → `Launch{program, args:[]}` ;
-    - `.ps1` → `Command{line:"powershell -ExecutionPolicy Bypass -File \"<p>\""}` ;
-    - `.bat`, `.cmd` → `Command{line:"\"<p>\""}` ;
+    - `.ps1` → `Launch{program:"powershell.exe", args:["-NoProfile","-ExecutionPolicy","Bypass","-File",<p>]}` (argv, pas de chaîne de shell) ;
+    - `.bat`, `.cmd` → `Launch{program:<p>, args:[]}` ;
     - autre → `Open{target}`.
   - Plusieurs fichiers : seul le premier compte, avec `warning:"Seul le premier fichier est utilisé"`.
   - Cible native, ou M1–M3 → `error` avec le message de la spec §12.5.

@@ -126,7 +126,7 @@ Les écrans qui n'ont pas de maquette (Réglages, mode configuration, glisser-d�
   - au lâcher, l'action est déduite :
     - `.mp3`, `.wav`, `.ogg` ou `.flac` → `Sound` (le son est ajouté à la bibliothèque, avec un id tiré du nom de fichier et rendu unique) ;
     - `.exe` ou `.lnk` → `Launch` ;
-    - `.ps1` ou `.bat`/`.cmd` → `Command` ;
+    - `.ps1` → `Launch` de `powershell` avec `-NoProfile -ExecutionPolicy Bypass -File <chemin>`, `.bat`/`.cmd` → `Launch` du fichier lui-même : arguments en liste (argv), jamais une chaîne de shell, pour qu'un nom de fichier ne puisse pas injecter de commande ;
     - URL → `Open` ;
     - autre fichier → `Open` ;
   - le panneau s'ouvre avec l'action préremplie, pour vérification ;

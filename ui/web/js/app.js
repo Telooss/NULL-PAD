@@ -9,6 +9,7 @@ import { createDraft } from './draft.js';
 import { actionForDrop, refusal } from './drop.js';
 import { saveFlow, guard, confirmBox, modalOpen } from './config-mode.js';
 import { createSettings } from './settings.js';
+import { initFx } from './fx.js';
 import { barSlots, nextFreeId, withNewProfile, withoutProfile, openCreate, openMenu, cleanTag, slotLabel, NAME_MAX } from './profiles.js';
 
 const N = window.NullCtl;
@@ -374,6 +375,7 @@ onFileDrop(({ type, paths, x, y }) => {
   if (out.warning) toast(app, out.warning);
 });
 
+initFx();
 const q = new URLSearchParams(location.search);
 if (q.get('test') === '1') {
   window.__padFrames = () => pad.frames();

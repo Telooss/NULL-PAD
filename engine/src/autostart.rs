@@ -78,6 +78,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "ecrit le vrai registre"]
     fn autostart_roundtrip() {
         let _restore = Restore(is_autostart());
         set_autostart(true).unwrap();

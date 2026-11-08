@@ -2,6 +2,7 @@
 // « Lancer avec Windows » n'est pas dans config.json : applique tout de suite.
 import { h } from './editors/render.js';
 import { guard, confirmBox, modalOpen } from './config-mode.js';
+import { fxOff, setFxOff } from './fx.js';
 import { AUDIO } from './drop.js';
 import { addSoundFile, clampPercent, clampPort, clampTiming, inUseMessage, isDirty, mergeSettings, normalize, settingsOf, TIMING_MAX, TIMING_MIN } from './settings-model.js';
 
@@ -23,6 +24,8 @@ export function createSettings(ctx) {
   let tab = 'audio';
   let saving = false;
   let env = { outputs: [], cable: false, autostart: false };
+  let outputsErr = false;
+  let autostartTouched = false; // bascule cliquee avant la fin du chargement
   let msg = ''; // refus de retrait d'un son
   let probe = {}; // resultats des tests { obs, midi }
 
@@ -40,7 +43,7 @@ export function createSettings(ctx) {
     h('button', { class: v === value ? 'is-on' : '', 'aria-pressed': String(v === value), onclick: () => { set(v); render(); } }, l))));
   const text = (label, obj, key, props = {}) => field(label, h('input', { class: 'nc-input', value: obj[key] ?? '', spellcheck: false, autocomplete: 'off', oninput: (e) => { obj[key] = e.target.value; }, ...props }));
   const num = (label, obj, key, lo, hi, clamp) => {
-    const inp = h('input', { class: 'nc-input', type: 'number', min: lo, max: hi, value: obj[key], onchange: () => { obj[key] = clamp(inp.value, obj[key]); inp.value = obj[key]; } });
+    const inp = h('input', { class: 'nc-input', type: 'number', min: lo, max: hi, value: obj[key], onchange: () => { if (inp.value.trim() !== '') obj[key] = clamp(inp.value, obj[key]); inp.value = obj[key]; } });
     return field(`${label} (${lo} à ${hi})`, inp);
   };
   const deviceSelect = (label, obj, key, none) => {
@@ -69,6 +72,7 @@ export function createSettings(ctx) {
 
   const PANES = {
     audio: () => [
+      outputsErr ? note('alert-triangle', 'Liste des sorties audio indisponible : seuls les choix déjà enregistrés sont proposés.') : null,
       deviceSelect('Sortie casque', draft.sound, 'monitor_device', 'Par défaut'),
       deviceSelect('Sortie VB-Cable', draft.sound, 'cable_device', 'Auto (VB-Cable)'),
       env.cable ? note('check', h('b', {}, 'VB-Cable détecté'))
@@ -107,13 +111,20 @@ export function createSettings(ctx) {
           onkeydown: (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggle(); } } },
         h('span', { class: 'box' }, env.autostart ? icon('check') : null), h('span', { class: 'tx' }, 'Lancer avec Windows')),
         note('info', 'Appliqué tout de suite, sans « Enregistrer ».'),
+        h('div', { class: `nc-check${fxOff() ? ' is-on' : ''}`, role: 'checkbox', tabIndex: 0, 'aria-checked': String(fxOff()), onclick: toggleFx,
+          onkeydown: (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggleFx(); } } },
+        h('span', { class: 'box' }, fxOff() ? icon('check') : null), h('span', { class: 'tx' }, 'Couper les effets')),
+        note('info', 'Sans grain, trame, fenêtres du décor ni glitch. Appliqué tout de suite.'),
         num('Appui long (ms)', draft.timing, 'hold_ms', TIMING_MIN, TIMING_MAX, clampTiming),
         num('Double appui (ms)', draft.timing, 'double_ms', TIMING_MIN, TIMING_MAX, clampTiming),
       ];
     },
   };
 
+  const toggleFx = () => { setFxOff(!fxOff()); render(); };
+
   async function setAutostart(want) {
+    autostartTouched = true;
     try {
       await ctx.invoke('set_autostart', { enabled: want });
       env.autostart = want;
@@ -192,6 +203,8 @@ export function createSettings(ctx) {
     tab = 'audio';
     msg = '';
     probe = {};
+    outputsErr = false;
+    autostartTouched = false;
     root = h('section', { class: 'nc-panel nc-settings', 'aria-label': 'Réglages' },
       h('div', { class: 'nc-panel-head' }, h('div', { class: 'nc-label' }, 'Réglages'), h('button', { class: 'nc-btn nc-btn-sm', title: 'Fermer (Échap)', 'aria-label': 'Fermer', onclick: leave }, icon('x'))),
       h('div', { class: 'nc-set-body' },
@@ -203,9 +216,10 @@ export function createSettings(ctx) {
     ctx.main.append(root);
     document.addEventListener('keydown', onKey);
     render();
+    let failed = false;
     const [outputs, cable, autostart] = await Promise.all([
-      ctx.invoke('list_audio_outputs').catch(() => []), ctx.invoke('cable_present').catch(() => false), ctx.invoke('get_autostart').catch(() => false)]);
-    if (root) { env = { outputs, cable, autostart }; render(); }
+      ctx.invoke('list_audio_outputs').catch(() => { failed = true; return []; }), ctx.invoke('cable_present').catch(() => false), ctx.invoke('get_autostart').catch(() => false)]);
+    if (root) { env = { outputs, cable, autostart: autostartTouched ? env.autostart : autostart }; outputsErr = failed; render(); }
   }
 
   // Fichiers deposes : les sons audio rejoignent la bibliotheque.
