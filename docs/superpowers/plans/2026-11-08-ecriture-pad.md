@@ -141,6 +141,7 @@
   4. Si une étape échoue → `discard` et l'erreur.
   5. Si tout réussit → relecture, mise à jour du cache, et renvoi de la nouvelle lecture.
 - `pad_discard_foreign()` : `discard_changes` après une confirmation donnée côté interface.
+- `hid_catalog() -> Vec<KeyChoice>` : renvoie `hid::catalog()` au sélecteur de touche native (Task 5).
 - Toutes les commandes s'exécutent hors du thread de l'interface (`async` + `spawn_blocking`). Un mutex garantit un seul client.
 
 - [ ] **Step 1: Tests qui échouent** (service contre le faux pad, cache dans un dossier temporaire) :
