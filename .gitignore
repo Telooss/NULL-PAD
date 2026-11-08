@@ -1,2 +1,4 @@
 target/
 firmware/out/
+ui/target/
+ui/gen/

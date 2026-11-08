@@ -1,0 +1,6 @@
+/* Ecarts avec l'artefact : la fenetre remplit l'ecran au lieu de 1440x900 fixes. */
+html, body { margin: 0; background: var(--bg-000); overflow: hidden; }
+.nc-app { width: 100vw; height: 100vh; }
+.nc-titlebar { user-select: none; }
+.nc-winctl span:hover { background: var(--surface-200); color: var(--ink); }
+.nc-winctl span:last-child:hover { background: #c42b3a; color: var(--on-violet); }

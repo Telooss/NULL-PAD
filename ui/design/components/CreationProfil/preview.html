@@ -1,0 +1,132 @@
+<!-- @dsCard group="Écrans" width=1440 height=900 subtitle="Création d'un profil, mise en scène façon écran de nom d'un jeu de glisse des années 2000. Tape un nom, change le tag, valide." -->
+<!doctype html>
+<html><head><meta charset="utf-8">
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.344.0/dist/umd/lucide.min.js"></script>
+<style>
+body{margin:0;background:#08070a;overflow:hidden}
+.cp { grid-template-rows: 36px 1fr; }
+.cp-scene { position: relative; display: grid; grid-template-columns: 660px 1fr; overflow: hidden; }
+.cp-left { position: relative; overflow: hidden; border-right: 1px solid var(--line-100); background: var(--bg-100); }
+.cp-left::before { /* bandes de vitesse : décor, derrière le pad */
+  content: ""; position: absolute; inset: -40%; transform: rotate(-24deg); pointer-events: none;
+  background: repeating-linear-gradient(90deg, transparent 0 46px, var(--violet-900) 46px 58px, transparent 58px 74px, var(--violet-700) 74px 78px, transparent 78px 150px);
+  -webkit-mask-image: linear-gradient(90deg, transparent 22%, #000 48%, #000 60%, transparent 85%); mask-image: linear-gradient(90deg, transparent 22%, #000 48%, #000 60%, transparent 85%);
+}
+.cp-ghost { position: absolute; right: -18px; bottom: -64px; font: 700 360px/1 var(--font-mono); color: transparent; -webkit-text-stroke: 2px var(--line-200); letter-spacing: -.06em; pointer-events: none; }
+.cp-right { padding: 40px 56px 32px; display: flex; flex-direction: column; gap: 26px; }
+.cp-step { display: flex; align-items: center; gap: 12px; }
+.cp-step .nc-label b { color: var(--violet-400); font-weight: 700; }
+.cp-name { width: 100%; box-sizing: border-box; background: transparent; border: 0; border-bottom: 2px solid var(--line-200); outline: none; padding: 6px 0 14px;
+  font: 400 68px/76px var(--font-sticker); text-transform: uppercase; letter-spacing: .02em;
+  color: var(--violet-500); -webkit-text-stroke: 6px var(--ink); paint-order: stroke fill; text-shadow: 5px 5px 0 var(--violet-700); caret-color: var(--violet-400); }
+.cp-name:focus { border-bottom-color: var(--violet-400); }
+.cp-help { font-size: 13px; color: var(--ink-muted); }
+.cp-row { display: flex; gap: 40px; align-items: flex-start; }
+.cp-tag { display: flex; gap: 10px; }
+.cp-letter { display: grid; justify-items: center; gap: 4px; }
+.cp-letter button { width: 64px; height: 24px; border-radius: var(--radius-sm); color: var(--ink-muted); display: grid; place-items: center; }
+.cp-letter button:hover { background: var(--surface-200); color: var(--ink); }
+.cp-letter output { width: 64px; height: 72px; display: grid; place-items: center; border: 1px solid var(--line-200); border-radius: var(--radius-sm); background: var(--surface-100);
+  font: 700 44px/1 var(--font-mono); }
+.cp-letter.is-on output { border-color: var(--violet-400); box-shadow: inset 0 -3px 0 var(--violet-500); }
+.cp-opts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.cp-opt { display: grid; gap: 4px; padding: 12px 14px; text-align: left; border: 1px solid var(--line-200); border-radius: var(--radius-md); background: var(--surface-100); }
+.cp-opt b { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.cp-opt span { font-size: 12px; color: var(--ink-muted); }
+.cp-opt.is-on { border-color: var(--violet-500); background: var(--violet-900); }
+.cp-opt.is-on svg.lucide { color: var(--violet-400); }
+.cp-slots { display: flex; gap: 8px; }
+.cp-slots .nc-slot { min-width: 0; height: 44px; }
+.cp-slots .nc-slot[disabled] { opacity: .5; cursor: default; }
+.cp-go { margin-top: 10px; display: flex; align-items: center; gap: 12px; }
+.cp-go .nc-btn.is-primary { height: 52px; padding: 0 24px; font-size: 16px; font-weight: 600; }
+.cp-go kbd { font: 500 11px/1 var(--font-mono); padding: 3px 5px; border: 1px solid currentColor; border-radius: 3px; opacity: .8; }
+</style>
+</head><body>
+<div class="nc-app cp" id="app">
+  <header class="nc-titlebar"><span class="nc-wordmark">null<b>ctl</b><i></i></span><span class="nc-sub">— nouveau profil</span>
+    <span class="nc-winctl"><span><i data-lucide="minus"></i></span><span><i data-lucide="square"></i></span><span><i data-lucide="x"></i></span></span></header>
+  <div class="cp-scene">
+    <section class="cp-left" id="stage">
+      <span class="cp-ghost">02</span>
+      <div class="nc-w98" style="left:24px;top:22px;width:250px;transform:rotate(-2deg);z-index:2">
+        <div class="bar">nouveau_profil.exe<i>×</i></div>
+        <div class="body"><span>Écriture de la couche 2 dans le NULL/PAD…</span><div class="prog"><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b></div></div>
+      </div>
+      <i class="nc-tape" style="left:190px;top:12px;transform:rotate(9deg);z-index:3"></i>
+      <div class="nc-w98" style="left:24px;bottom:34px;width:180px;transform:rotate(2.5deg);z-index:2">
+        <div class="bar">ZMK.SYS<i>×</i></div>
+        <div class="body"><span>3 caractères max. sur l'écran. Pas d'accents.</span><span class="ok">OK</span></div>
+      </div>
+      <i class="nc-tape" style="left:14px;bottom:104px;transform:rotate(-20deg);width:54px;z-index:3"></i>
+    </section>
+    <section class="cp-right">
+      <div class="cp-step"><span class="nc-label">Nouveau profil · <b>emplacement M2</b> · couche ZMK 2 sur 8</span></div>
+      <div>
+        <div class="nc-label" style="margin-bottom:6px">Nom du profil</div>
+        <input class="cp-name" id="name" value="Stream night" maxlength="18" spellcheck="false" aria-label="Nom du profil">
+        <div class="cp-help" style="margin-top:8px">Affiché en haut de nullctl. Jusqu'à 18 caractères.</div>
+      </div>
+      <div class="cp-row">
+        <div>
+          <div class="nc-label" style="margin-bottom:8px">Tag · affiché sur l'écran du pad</div>
+          <div class="cp-tag" id="tag"></div>
+          <div class="cp-help" style="margin-top:8px">Proposé depuis le nom. A–Z et 0–9.</div>
+        </div>
+        <div>
+          <div class="nc-label" style="margin-bottom:8px">Touche de profil</div>
+          <div class="cp-slots">
+            <button class="nc-slot" disabled><span class="nc-m">M1</span><span class="nc-tag" style="margin:0">DEF</span></button>
+            <button class="nc-slot is-active"><span class="nc-m">M2</span><span>Libre</span></button>
+            <button class="nc-slot"><span class="nc-m">M3</span><span>Libre</span></button>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="nc-label" style="margin-bottom:8px">Partir de</div>
+        <div class="cp-opts">
+          <button class="cp-opt is-on"><b><i data-lucide="square-dashed"></i>Vide</b><span>Toutes les touches libres</span></button>
+          <button class="cp-opt"><b><i data-lucide="calculator"></i>Pavé numérique</b><span>Chiffres natifs, marche sans nullctl</span></button>
+          <button class="cp-opt"><b><i data-lucide="copy"></i>Copie de DEFAULT</b><span>Même réglages, à modifier</span></button>
+        </div>
+      </div>
+      <div class="cp-go">
+        <button class="nc-btn is-primary" id="go"><i data-lucide="corner-down-left"></i>Créer le profil <kbd>Entrée</kbd></button>
+        <button class="nc-btn">Annuler <kbd>Échap</kbd></button>
+      </div>
+    </section>
+  </div>
+</div>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/+esm';
+const N = window.NullCtl;
+const [geo] = await Promise.all([fetch('../../assets/Modele/nullpad.json').then(r => r.json()), N.fontsReady()]);
+const app = document.getElementById('app'), stage = document.getElementById('stage');
+const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', name = document.getElementById('name');
+let tag = ['S', 'T', 'R'], touched = false;
+const legends = () => Array(20).fill('').concat(['DEF', tag.join(''), '']);
+const pad = N.pad3d(THREE, geo, stage, { fill: 0.74, cx: 0.55, rot: -9, legends: legends(), lcd: { top: 'NEW', tag: tag.join(''), bottom: 'P2' } });
+const suggest = s => (s.toUpperCase().normalize('NFD').replace(/[^A-Z0-9]/g, '') + '---').slice(0, 3).split('');
+function drawTag() {
+  const box = document.getElementById('tag'); box.textContent = '';
+  tag.forEach((ch, i) => {
+    const d = document.createElement('div'); d.className = 'cp-letter' + (i === 0 ? ' is-on' : '');
+    d.innerHTML = '<button aria-label="Lettre suivante"><i data-lucide="chevron-up"></i></button><output></output><button aria-label="Lettre précédente"><i data-lucide="chevron-down"></i></button>';
+    d.querySelector('output').textContent = ch;
+    d.querySelectorAll('button').forEach((b, up) => b.addEventListener('click', () => {
+      const k = A.indexOf(tag[i]); tag[i] = A[(k + (up ? A.length - 1 : 1)) % A.length]; touched = true; drawTag();
+    }));
+    box.appendChild(d);
+  });
+  pad.lcd({ top: 'NEW', tag: tag.join(''), bottom: 'P2' }); pad.legends(legends());
+  N.icons();
+}
+name.addEventListener('input', () => { if (!touched) { tag = suggest(name.value); drawTag(); } });
+document.getElementById('go').addEventListener('click', () => {
+  N.glitch(app);
+  N.toast(app, '<i data-lucide="check"></i><span></span>');
+  app.querySelector('.nc-toast span').textContent = 'Profil ' + name.value.toUpperCase() + ' créé · M2 → ' + tag.join('');
+});
+drawTag(); N.icons();
+</script>
+</body></html>

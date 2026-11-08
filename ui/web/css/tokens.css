@@ -1,0 +1,47 @@
+/* Genere a la main depuis ui/design/tokens.json */
+:root {
+  --bg-000: #08070a;
+  --bg-100: #0e0c12;
+  --surface-100: #141119;
+  --surface-200: #1d1924;
+  --surface-300: #28232f;
+  --line-100: #2b2633;
+  --line-200: #433c4e;
+  --ink: #f1eff5;
+  --ink-muted: #a49dae;
+  --ink-faint: #6f6879;
+  --violet-300: #c4b2ff;
+  --violet-400: #a88cff;
+  --violet-500: #7b4dff;
+  --violet-700: #4a2aa6;
+  --violet-900: #1f1340;
+  --on-violet: #ffffff;
+  --win-face: #c4c1ca;
+  --win-ink: #121016;
+  --tape: rgba(226, 220, 205, 0.55);
+  --lcd: #b8bbb3;
+  --lcd-ink: #1b1c19;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --radius-sm: 3px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --font-sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", Consolas, monospace;
+  --font-sticker: "Bagel Fat One", "IBM Plex Sans", sans-serif;
+  --font-lcd: Silkscreen, "IBM Plex Mono", monospace;
+  --font-win: Tahoma, "MS Sans Serif", "IBM Plex Sans", sans-serif;
+}
+.ui-title { font-family: var(--font-sans); font-size: 20px; line-height: 26px; font-weight: 600; }
+.ui-body { font-family: var(--font-sans); font-size: 14px; line-height: 20px; font-weight: 400; }
+.ui-strong { font-family: var(--font-sans); font-size: 14px; line-height: 20px; font-weight: 600; }
+.ui-small { font-family: var(--font-sans); font-size: 12px; line-height: 16px; font-weight: 400; }
+.mono-label { font-family: var(--font-mono); font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.08em; }
+.mono-key { font-family: var(--font-mono); font-size: 32px; line-height: 34px; font-weight: 700; }
+.wordmark { font-family: var(--font-mono); font-size: 15px; line-height: 18px; font-weight: 700; }
+.profile-sticker { font-family: var(--font-sticker); font-size: 26px; line-height: 28px; font-weight: 400; letter-spacing: 0.02em; }
+.profile-hero { font-family: var(--font-sticker); font-size: 72px; line-height: 72px; font-weight: 400; }
+.lcd-tag { font-family: var(--font-lcd); font-size: 22px; line-height: 22px; font-weight: 700; }
