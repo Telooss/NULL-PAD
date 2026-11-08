@@ -1,5 +1,9 @@
 //! Client du protocole ZMK Studio (RPC protobuf sur port série).
+pub mod client;
+#[cfg(test)]
+pub(crate) mod fake;
 pub mod framing;
+pub mod port;
 
 #[allow(clippy::all, dead_code)]
 pub mod pb {

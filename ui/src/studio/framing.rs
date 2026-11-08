@@ -2,6 +2,7 @@
 pub const SOF: u8 = 0xAB;
 pub const ESC: u8 = 0xAC;
 pub const EOF: u8 = 0xAD;
+const MAX_FRAME: usize = 64 * 1024;
 
 pub fn encode(msg: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(msg.len() + 2);
@@ -52,6 +53,12 @@ impl Decoder {
                     }
                     _ => self.buf.push(b),
                 }
+            }
+            if self.buf.len() > MAX_FRAME {
+                // Trame démesurée : on la jette et on attend le prochain SOF.
+                self.in_frame = false;
+                self.escaped = false;
+                self.buf.clear();
             }
         }
         frames
@@ -106,6 +113,16 @@ mod tests {
     fn stray_bytes_and_restart_on_sof() {
         let buf = [9, 9, EOF, SOF, 1, 2, SOF, 5, EOF, 8];
         assert_eq!(Decoder::new().push(&buf), vec![vec![5]]);
+    }
+
+    #[test]
+    fn oversized_frame_is_dropped_then_recovers() {
+        let mut d = Decoder::new();
+        let mut big = vec![SOF];
+        big.extend(vec![1; MAX_FRAME + 10]);
+        big.push(EOF);
+        assert!(d.push(&big).is_empty());
+        assert_eq!(d.push(&encode(&[5])), vec![vec![5]]);
     }
 
     #[test]
