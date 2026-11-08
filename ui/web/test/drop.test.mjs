@@ -15,11 +15,15 @@ test('audio -> Sound with unique id', () => {
 test('programs and scripts', () => {
   assert.deepEqual(d(['C:\\a.exe']).action, { type: 'Launch', program: 'C:\\a.exe', args: [] });
   assert.deepEqual(d(['C:\\a.lnk']).action, { type: 'Open', target: 'C:\\a.lnk' });
-  assert.deepEqual(d(['C:\\a.ps1']).action, { type: 'Command', line: "& powershell -NoProfile -ExecutionPolicy Bypass -File 'C:\\a.ps1'" });
-  assert.deepEqual(d(['C:\\a.bat']).action, { type: 'Command', line: "& 'C:\\a.bat'" });
-  assert.equal(d(['C:\\a.CMD']).action.type, 'Command');
-  assert.equal(d(["C:\\it's $x\\a.bat"]).action.line, "& 'C:\\it''s $x\\a.bat'");
   assert.deepEqual(d(['C:\\a.pdf']).action, { type: 'Open', target: 'C:\\a.pdf' });
+});
+test('scripts are structured Launch actions, paths untouched', () => {
+  for (const p of ["C:\\it's $x & y\\a.bat", 'C:\\L\u2019air \u2018x\u2019.CMD', 'C:\\a b.bat']) {
+    assert.deepEqual(d([p]).action, { type: 'Launch', program: p, args: [] });
+  }
+  for (const p of ["C:\\it's $x & y\\a.ps1", 'C:\\L\u2019air.ps1', 'C:\\a b.ps1']) {
+    assert.deepEqual(d([p]).action, { type: 'Launch', program: 'powershell.exe', args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', p] });
+  }
 });
 test('several files', () => {
   const r = d(['a.pdf', 'b.pdf']);

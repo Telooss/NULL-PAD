@@ -35,7 +35,7 @@ export function createDraft(config, profileId) {
     merged() {
       const out = structuredClone(base);
       out.profiles[idx] = structuredClone(cur);
-      if (added.length) out.sound.sounds = [...out.sound.sounds, ...structuredClone(added)];
+      if (added.length) out.sound = { ...out.sound, sounds: [...(out.sound?.sounds ?? []), ...structuredClone(added)] };
       return out;
     },
   };

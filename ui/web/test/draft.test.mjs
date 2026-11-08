@@ -61,3 +61,9 @@ test('addSound lands in merged sound.sounds and is dirty', () => {
   assert.deepEqual({ o: m.obs, i: m.midi, p0: m.profiles[0] }, { o: orig.obs, i: orig.midi, p0: orig.profiles[0] });
   assert.deepEqual(c, orig);
 });
+test('addSound works without a sound section', () => {
+  const c = cfg(); delete c.sound;
+  const d = createDraft(c, 1);
+  d.addSound({ id: 'n' });
+  assert.deepEqual(d.merged().sound.sounds, [{ id: 'n' }]);
+});
