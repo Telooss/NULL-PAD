@@ -83,6 +83,7 @@ export function createEditPanel(el, { pickFile, onChange }) {
     if (!s?.input) {
       el.innerHTML = '<div class="nc-panel-head"><div><div class="nc-label">Touche</div><div class="nc-keyname">—</div></div></div>' +
         '<div class="nc-section"><span class="nc-label">Choisis une touche, ou dépose un fichier dessus</span></div>';
+      if (error) el.append(h('div', { class: 'nc-section' }, note('alert-triangle', error)));
     } else {
       const m = panelModel(s.draft.merged(), s.profileId, s.input, s.natives);
       el.innerHTML = `<div class="nc-panel-head"><div><div class="nc-label">Touche</div><div class="nc-keyname">${esc(m.name)}</div></div>` +
@@ -106,5 +107,7 @@ export function createEditPanel(el, { pickFile, onChange }) {
     },
     // Erreur de validation ou du moteur, en tete du panneau (null pour l'effacer).
     setError(text) { error = text; render(); },
+    // Onglet de declencheur a montrer pour une entree au prochain rendu.
+    showTrigger(input, i) { tabs[input] = i; picking = null; },
   };
 }

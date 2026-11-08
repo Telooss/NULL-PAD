@@ -35,8 +35,8 @@ textarea.nc-input { resize: vertical; }
 .nc-seg { flex-wrap: wrap; }
 .nc-seg button { flex: 1 0 auto; padding: 0 8px; }
 .nc-row .nc-input { flex: 1; }
-/* Sous 1400 px : pastilles, « Nouveau profil », « Configurer » et « Réglages » en icone seule (infobulle). */
-@media (max-width: 1399px) {
+/* Sous 1680 px : pastilles, « Nouveau profil », « Configurer » et « Réglages » en icone seule (infobulle). */
+@media (max-width: 1679px) {
   .nc-topbar .lbl { display: none; }
   .nc-topbar .nc-pill, .nc-newprofile { padding: 0 8px; gap: 0; }
   .nc-topbar .nc-btn:has(.lbl) { padding: 0 10px; gap: 0; }
