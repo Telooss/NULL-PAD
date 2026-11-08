@@ -106,6 +106,14 @@ pub fn decode(km: &keymap::Keymap, behaviors: &HashMap<u32, String>) -> PadModel
 }
 
 pub fn encode(b: &PadBinding, behaviors: &HashMap<u32, String>) -> Result<BehaviorBinding, String> {
+    if let PadBinding::Action { profile, input } = b {
+        if !(1..=8).contains(profile) || usize::from(*input) >= POSITIONS {
+            return Err(format!(
+                "Action invalide : profil {profile} (1 à 8), entrée {input} (0 à {}).",
+                POSITIONS - 1
+            ));
+        }
+    }
     let (name, p1, p2) = match b {
         PadBinding::Action { profile, input } => {
             (KEY_PRESS.to_string(), act_usage(*profile, *input), 0)
@@ -193,10 +201,20 @@ pub fn diff(before: &PadModel, after: &PadModel) -> Vec<PadChange> {
 /// bindings : `set_layer_binding` ne peut pas la modifier, il n'y a donc rien à vérifier ici.
 pub fn guard(model: &PadModel, max_name_len: usize) -> Result<(), String> {
     for l in &model.layers {
+        if l.name.is_empty() {
+            return Err(format!("La couche {} a un nom vide.", l.id));
+        }
         if l.name.len() > max_name_len {
             return Err(format!(
-                "Le nom de la couche « {} » dépasse {max_name_len} caractères.",
+                "Le nom de la couche « {} » est trop long (max {max_name_len} octets).",
                 l.name
+            ));
+        }
+        if l.bindings.len() != POSITIONS {
+            return Err(format!(
+                "La couche « {} » doit avoir {POSITIONS} touches (reçu {}).",
+                l.name,
+                l.bindings.len()
             ));
         }
         if !l.bindings.contains(&PadBinding::ProfileMacro { n: 1 }) {
@@ -271,6 +289,12 @@ mod tests {
                 );
             }
         }
+        for (profile, input) in [(0, 0), (9, 0), (1, 29)] {
+            assert!(
+                encode(&act(profile, input), &names()).is_err(),
+                "{profile}/{input}"
+            );
+        }
         let bad = PadBinding::Other {
             behavior: "nope".into(),
             p1: 0,
@@ -325,6 +349,12 @@ mod tests {
         assert_eq!(guard(&m, 20), Ok(()));
         assert!(guard(&m, 2).unwrap_err().contains("nom"));
         m.layers[3].bindings[20] = act(4, 20);
+        let mut short = model();
+        short.layers[0].bindings.pop();
+        assert!(guard(&short, 20).is_err());
+        let mut empty = model();
+        empty.layers[0].name.clear();
+        assert!(guard(&empty, 20).is_err());
         assert!(guard(&m, 20).unwrap_err().contains("np_p1"));
     }
 
