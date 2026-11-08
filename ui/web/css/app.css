@@ -90,3 +90,13 @@ textarea.nc-input { resize: vertical; }
 .cp-go .nc-btn.is-primary { height: 52px; padding: 0 24px; font-size: 16px; font-weight: 600; }
 .cp-go .nc-btn:disabled { opacity: .45; cursor: not-allowed; }
 .cp-go kbd { font: 500 11px/1 var(--font-mono); padding: 3px 5px; border: 1px solid currentColor; border-radius: 3px; opacity: .8; }
+
+/* Reglages (Task 11) : remplace scene et panneau ; onglets verticaux, memes composants. */
+.nc-settings { grid-column: 1 / -1; grid-row: 1; }
+.nc-set-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 16px; padding: 0 16px; }
+.nc-settings .nc-tabs { flex-direction: column; margin: 14px 0; align-self: start; }
+.nc-settings .nc-tabs button { flex: none; text-align: left; padding: 0 10px; }
+.nc-set-pane { overflow: auto; padding-bottom: 14px; max-width: 640px; }
+.nc-settings .nc-panel-head { justify-content: space-between; }
+.nc-settings .nc-panel-foot { justify-content: flex-end; }
+.nc-ellipsis { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

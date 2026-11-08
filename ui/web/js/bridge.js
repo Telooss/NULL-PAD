@@ -32,6 +32,7 @@ const sample = () => ({
 
 let mockCfg = sample();
 let mockProfile = 1;
+let mockAutostart = false;
 const listeners = new Map();
 const emit = (evt, payload) => (listeners.get(evt) || []).forEach((cb) => cb({ event: evt, payload }));
 
@@ -52,6 +53,12 @@ const mock = {
   },
   engine_status: () => ({ profile: mockProfile, link: 'usb', version: '0.1.0' }),
   start_engine: () => null,
+  list_audio_outputs: () => ['Speakers (Realtek Audio)', 'Headphones (Focusrite USB Audio)', 'CABLE Input (VB-Audio Virtual Cable)'],
+  cable_present: () => true,
+  get_autostart: () => mockAutostart,
+  set_autostart: ({ enabled }) => { mockAutostart = enabled; },
+  test_obs: () => ({ ok: false, error: 'OBS injoignable (127.0.0.1:4455)' }),
+  test_midi: () => ({ ok: true }),
   // Legendes de la couche 0 du vrai keymap (K11, K19 : actions).
   native_keys: () => ({ K00: 'VERR NUM', K01: '/', K02: '*', K03: '−', K04: '7', K05: '8', K06: '9', K07: '+', K08: '4', K09: '5', K10: '6',
     K12: '1', K13: '2', K14: '3', K15: 'ENTRÉE', K16: '0', K17: '00', K18: '.', M1: 'P1', M2: 'P2', M3: 'P3',

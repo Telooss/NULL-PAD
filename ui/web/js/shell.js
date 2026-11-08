@@ -16,7 +16,7 @@ export function mountShell() {
     '<button class="nc-btn" data-configure title="Configurer"><i data-lucide="pencil"></i><span class="lbl">Configurer</span></button>' +
     '<button class="nc-btn is-primary" data-save style="display:none"><i data-lucide="save"></i>Enregistrer</button>' +
     '<button class="nc-btn" data-cancel style="display:none"><i data-lucide="x"></i>Annuler</button>' +
-    '<button class="nc-btn" title="Réglages"><i data-lucide="settings"></i><span class="lbl">Réglages</span></button>';
+    '<button class="nc-btn" data-settings title="Réglages"><i data-lucide="settings"></i><span class="lbl">Réglages</span></button>';
   // Libelles repliables sous 1400 px (app.css) ; l'infobulle garde le texte.
   const np = document.querySelector('.nc-newprofile');
   np.title = np.textContent.trim();
@@ -87,6 +87,7 @@ export function mountShell() {
       q('[data-save]').style.display = on ? '' : 'none';
       q('[data-cancel]').style.display = on ? '' : 'none';
     },
+    onSettings: (cb) => q('[data-settings]').addEventListener('click', cb),
     onSave: (cb) => q('[data-save]').addEventListener('click', cb),
     onCancel: (cb) => q('[data-cancel]').addEventListener('click', cb),
   };

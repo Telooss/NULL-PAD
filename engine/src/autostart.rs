@@ -1,5 +1,6 @@
 use crate::paths::APP_DIR;
 use std::io;
+use std::path::Path;
 use windows::core::{w, HSTRING, PCWSTR};
 use windows::Win32::System::Registry::{
     RegDeleteKeyValueW, RegGetValueW, RegSetKeyValueW, HKEY_CURRENT_USER, REG_SZ, RRF_RT_REG_SZ,
@@ -24,9 +25,14 @@ pub fn is_autostart() -> bool {
 }
 
 pub fn set_autostart(enabled: bool) -> io::Result<()> {
+    set_autostart_for(enabled, &std::env::current_exe()?)
+}
+
+/// Comme `set_autostart`, mais la valeur `Run` pointe vers `target` (l'interface lance le moteur).
+pub fn set_autostart_for(enabled: bool, target: &Path) -> io::Result<()> {
     let name = HSTRING::from(APP_DIR);
     let err = if enabled {
-        let exe = format!("\"{}\"", std::env::current_exe()?.display());
+        let exe = format!("\"{}\"", target.display());
         let data: Vec<u16> = exe.encode_utf16().chain(Some(0)).collect();
         unsafe {
             RegSetKeyValueW(

@@ -1,6 +1,7 @@
 //! Cote Rust de NULL/CONTROL : commandes Tauri et relais des pipes du moteur.
 pub mod native;
 pub mod pipes;
+pub mod settings;
 pub mod store;
 
 use engine::config::{default_config, Config};
@@ -54,6 +55,27 @@ fn start_engine() -> Result<(), String> {
     pipes::start_engine()
 }
 
+// async : l'enumeration WASAPI peut prendre un moment.
+#[tauri::command(async)]
+fn list_audio_outputs() -> Vec<String> {
+    engine::sound::devices::output_names()
+}
+
+#[tauri::command(async)]
+fn cable_present() -> bool {
+    engine::sound::devices::cable_present()
+}
+
+#[tauri::command]
+fn get_autostart() -> bool {
+    engine::autostart::is_autostart()
+}
+
+#[tauri::command]
+fn set_autostart(enabled: bool) -> Result<(), String> {
+    settings::set_autostart(enabled)
+}
+
 #[tauri::command]
 fn config_path() -> String {
     engine::paths::config_path().display().to_string()
@@ -79,6 +101,10 @@ pub fn run() {
             test_obs,
             test_midi,
             start_engine,
+            list_audio_outputs,
+            cable_present,
+            get_autostart,
+            set_autostart,
             config_path
         ])
         .setup(|app| {

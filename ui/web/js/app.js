@@ -8,6 +8,7 @@ import { legendsFor, panelModel, profileOf, profileSlots } from './view.js';
 import { createDraft } from './draft.js';
 import { actionForDrop, refusal } from './drop.js';
 import { saveFlow, guard, confirmBox, modalOpen } from './config-mode.js';
+import { createSettings } from './settings.js';
 import { barSlots, nextFreeId, withNewProfile, withoutProfile, openCreate, openMenu, cleanTag, slotLabel, NAME_MAX } from './profiles.js';
 
 const N = window.NullCtl;
@@ -58,7 +59,7 @@ function renderBar() {
   shell.setCanCreate(!cfgError && nextFreeId(cfg) !== null);
 }
 
-const requestConfig = () => { if (!cfgError && !draft && !creating) enterConfig(); };
+const requestConfig = () => { if (!cfgError && !draft && !creating && !settings.isOpen()) enterConfig(); };
 const viewPanel = createViewPanel(panelEl, { onConfigure: requestConfig });
 const editPanel = createEditPanel(panelEl, { pickFile, onChange: () => refreshPad() });
 shell.setLink('none');
@@ -231,7 +232,7 @@ shell.onCancel(async () => {
   exitConfig();
 });
 shell.onSlot(async (id) => {
-  if (saving || creating) return;
+  if (saving || creating || settings.isOpen()) return;
   if (!draft) return setProfile(id, true);
   if (id === profileId || !profileOf(cfg, id)) return;
   if (saving || !(await leaveDraft(false))) return;
@@ -287,8 +288,22 @@ async function writeNow(next) {
   return true;
 }
 
+// ── Reglages : remplace scene et panneau ; profils et mode configuration figes pendant ce temps ──
+const settings = createSettings({
+  main, app, invoke, pickFile, toast: (t) => toast(app, t), config: () => cfg, write: writeNow,
+  onClose: () => { stage.style.display = ''; panelEl.style.display = ''; },
+});
+shell.onSettings(() => {
+  if (cfgError) return toast(app, 'Config illisible : corrigez le fichier d’abord');
+  if (draft) return toast(app, 'Quittez d’abord la configuration du profil');
+  if (saving || creating || modalOpen() || settings.isOpen()) return;
+  stage.style.display = 'none';
+  panelEl.style.display = 'none';
+  settings.open();
+});
+
 async function newProfile(want) {
-  if (saving || creating || modalOpen() || cfgError || nextFreeId(cfg) === null) return;
+  if (saving || creating || settings.isOpen() || modalOpen() || cfgError || nextFreeId(cfg) === null) return;
   if (draft && !(await leaveDraft(false))) return;
   const id = withNewProfile(cfg, { name: '', tag: 'XXX', want }).profiles.find((p) => !profileOf(cfg, p.id)).id;
   const fromId = profileId;
@@ -317,7 +332,7 @@ async function newProfile(want) {
 
 async function deleteProfile(id) {
   const p = profileOf(cfg, id);
-  if (!p || id === 1 || saving || creating || modalOpen()) return;
+  if (!p || id === 1 || saving || creating || settings.isOpen() || modalOpen()) return;
   if (draft && !(await leaveDraft(false))) return;
   const c = await confirmBox(app, { title: 'Supprimer le profil', text: `Supprimer le profil ${p.name} (${p.tag}) ? Ses actions seront perdues.`,
     buttons: [['delete', 'Supprimer'], ['stay', 'Annuler', true]] });
@@ -332,14 +347,15 @@ async function deleteProfile(id) {
 }
 
 shell.onNew(newProfile);
-shell.onMenu((id, anchor) => !creating && openMenu(anchor, [['Supprimer le profil…', () => deleteProfile(id)]]));
-onCloseRequested(() => (!draft || guard(draft.dirty(), 'close') === 'proceed' ? true : leaveDraft(false)));
+shell.onMenu((id, anchor) => !creating && !settings.isOpen() && openMenu(anchor, [['Supprimer le profil…', () => deleteProfile(id)]]));
+onCloseRequested(() => (settings.isOpen() ? settings.leave() : !draft || guard(draft.dirty(), 'close') === 'proceed' ? true : leaveDraft(false)));
 
 refreshPad();
 pad.onPick((input) => { if (input && !saving) select(input); });
 
 // Depot de fichiers (natif Tauri, ou mock) ecoute au niveau de la webview / du document.
 onFileDrop(({ type, paths, x, y }) => {
+  if (settings.isOpen()) { if (type === 'drop' && !modalOpen()) settings.drop(paths); return; }
   const busy = saving || modalOpen(); // pendant un enregistrement ou une question : depot ignore
   const target = type === 'leave' || busy ? null : pad.pickAt(x, y);
   // Lueur seulement sur une cible liable (pas de natives, M1–M3, molette gauche).
