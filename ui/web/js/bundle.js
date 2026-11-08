@@ -45,11 +45,11 @@
 
   /* ── Le pad en 3D, depuis le vrai modèle (case/model → STL → assets/Modele/nullpad.json) ──────────
      pad3d(THREE, geo, stage, o) — o: {legends[23], sel, lcd:{top,tag,bottom}, fill (part de la hauteur), cx (0–1), rot (°), callouts:{D1:[titre,texte],D2:…}, onPick}
-     Renvoie {select, legends, lcd}. Les légendes et l'écran sont des textures posées sur les surfaces : elles suivent la perspective. */
+     Renvoie {select, legends, lcd, hover, press, pick, resize, dispose, invalidate, frames} (ajouts nullctl, voir README-ecarts). Les légendes et l'écran sont des textures posées sur les surfaces : elles suivent la perspective. */
   function pad3d(THREE, geo, stage, o) {
     var W = stage.clientWidth, H = stage.clientHeight;
     var r = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    r.setPixelRatio(Math.min(2, window.devicePixelRatio || 1)); r.setSize(W, H);
+    r.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1)); r.setSize(W, H);
     r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 0.85; r.outputColorSpace = THREE.SRGBColorSpace;
     r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
     r.domElement.className = 'nc-canvas'; stage.appendChild(r.domElement);
@@ -116,10 +116,14 @@
     // Caméra : focale longue, inclinée de 24° vers l'utilisateur ; recul calculé pour que le pad remplisse `fill` de la hauteur.
     var fov = 16, tilt = THREE.MathUtils.degToRad(24), fill = o.fill || 0.9;
     var D = 168 / (fill * 2 * Math.tan(THREE.MathUtils.degToRad(fov / 2)));
-    var visW = 2 * D * Math.tan(THREE.MathUtils.degToRad(fov / 2)) * (W / H), dx = (0.5 - (o.cx == null ? 0.5 : o.cx)) * visW;
     var cam = new THREE.PerspectiveCamera(fov, W / H, 10, 5000);
-    cam.position.set(dx, -D * Math.sin(tilt), D * Math.cos(tilt)); cam.up.set(0, 1, 0); cam.lookAt(dx, 3, 0);
-    cam.updateMatrixWorld();
+    function aim() { // nullctl : refait au redimensionnement
+      var visW = 2 * D * Math.tan(THREE.MathUtils.degToRad(fov / 2)) * (W / H), dx = (0.5 - (o.cx == null ? 0.5 : o.cx)) * visW;
+      cam.aspect = W / H; cam.updateProjectionMatrix();
+      cam.position.set(dx, -D * Math.sin(tilt), D * Math.cos(tilt)); cam.up.set(0, 1, 0); cam.lookAt(dx, 3, 0);
+      cam.updateMatrixWorld();
+    }
+    aim();
 
     // Faces du dessus : sommets les plus « hauts » selon la normale n → plan de cette face (centre, largeur, longueur).
     function topFace(mesh, n) {
@@ -136,10 +140,18 @@
         var tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
         var pl = new THREE.Mesh(new THREE.PlaneGeometry(t.w, t.h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false }));
         pl.position.copy(t.c).setZ(t.c.z + 0.04); pl.renderOrder = 4; pad.add(pl);
-        mesh.userData.top = { cv: cv, tex: tex, t: t };
+        mesh.userData.top = { cv: cv, tex: tex, t: t, pl: pl };
       }
-      var u = mesh.userData.top, x = u.cv.getContext('2d');
+      var u = mesh.userData.top, sig = String(text); // nullctl : texte (ou [l1, l2]) inchangé → pas de redessin
+      if (u.text === sig) return; u.text = sig;
+      var x = u.cv.getContext('2d');
       x.clearRect(0, 0, 256, 256); x.textAlign = 'center'; x.textBaseline = 'middle';
+      if (Array.isArray(text) && text[1]) { // nullctl : légende sur deux lignes
+        x.fillStyle = VIOLET_KEYS[F] ? '#f3efff' : '#2a2533'; x.font = '600 50px "IBM Plex Mono", monospace';
+        x.fillText(text[0].toUpperCase(), 128, 104); x.fillText(text[1].toUpperCase(), 128, 160);
+        u.tex.needsUpdate = true; return;
+      }
+      if (Array.isArray(text)) text = text[0] || '';
       var empty = !text, small = text && text.length > 4;
       x.fillStyle = VIOLET_KEYS[F] ? '#f3efff' : empty ? '#8f899a' : '#2a2533';
       x.font = (empty ? '400 104px ' : small ? '600 50px ' : '700 ' + (text.length > 2 ? 74 : 96) + 'px ') + '"IBM Plex Mono", monospace';
@@ -152,7 +164,9 @@
     var lcdTex = new THREE.CanvasTexture(lcdCv); lcdTex.colorSpace = THREE.SRGBColorSpace; lcdTex.anisotropy = 8;
     var lcdPl = new THREE.Mesh(new THREE.PlaneGeometry(nt.w, nt.h), new THREE.MeshStandardMaterial({ map: lcdTex, roughness: 0.6 }));
     lcdPl.rotation.x = a10; lcdPl.position.copy(nt.c).addScaledVector(nN, 0.03); lcdPl.receiveShadow = true; pad.add(lcdPl);
+    var lcdSig = null;
     function lcd(L) {
+      var sig = [L.top, L.tag, L.bottom].join('\n'); if (sig === lcdSig) return; lcdSig = sig; // nullctl : pas de redessin inutile
       var x = lcdCv.getContext('2d'); x.fillStyle = '#b8bbb3'; x.fillRect(0, 0, 160, 400);
       x.fillStyle = '#1b1c19'; x.textAlign = 'center'; x.textBaseline = 'middle';
       x.font = '700 28px Silkscreen, monospace'; x.fillText(L.top || '', 80, 112);
@@ -186,7 +200,12 @@
       if (!sel) { anc.style.display = 'none'; return; }
       var s = screenBox(sel); anc.style.cssText = 'left:' + s.x + 'px;top:' + s.y + 'px;width:' + s.w + 'px;height:' + s.h + 'px';
     }
-    function render() { r.render(scene, cam); }
+    // nullctl : rendu à la demande. render() ne dessine plus : il demande UNE image (rAF unique en attente), rien si la fenêtre est cachée.
+    var raf = 0, frames = 0, dead = false;
+    function draw() { raf = 0; if (dead || document.hidden) return; r.render(scene, cam); frames++; }
+    function render() { if (!raf && !dead) raf = requestAnimationFrame(draw); }
+    function onVis() { if (!document.hidden) render(); }
+    document.addEventListener('visibilitychange', onVis);
 
     // Clic et survol par lancer de rayon sur les keycaps et les molettes.
     var ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
@@ -197,9 +216,10 @@
       var h = ray.intersectObjects(pickable, false)[0]; return h ? h.object : null;
     }
     r.domElement.addEventListener('pointermove', function (e) {
-      var m = hit(e); r.domElement.style.cursor = m ? 'pointer' : '';
-      if (m === hover) return; if (hover && hover !== sel) glow(hover, 0); hover = m; if (m && m !== sel) glow(m, 0.08); render();
+      var m = hit(e); r.domElement.style.cursor = m ? 'pointer' : ''; hoverOn(m);
     });
+    r.domElement.addEventListener('pointerleave', function () { hoverOn(null); }); // nullctl
+    function hoverOn(m) { if (m === hover) return; if (hover && hover !== sel) glow(hover, 0); hover = m; if (m && m !== sel) glow(m, 0.08); render(); }
     r.domElement.addEventListener('click', function (e) { var m = hit(e); if (m && o.onPick) o.onPick(m.name); });
 
     // Légendes des molettes, placées à côté de leur projection.
@@ -219,7 +239,24 @@
     legends(o.legends || NUMPAD);
     lcd(o.lcd || { top: 'USB', tag: 'DEF', bottom: 'P1' });
     select(o.sel);
-    return { select: select, legends: legends, lcd: function (L) { lcd(L); render(); } };
+    // nullctl : appui (enfoncement de dz mm le long de l'axe de la touche, lueur violette), pick, redimensionnement, nettoyage.
+    function press(name, down, dz) {
+      var m = byName[name]; if (!m) return;
+      if (m.userData.z0 == null) m.userData.z0 = m.position.z;
+      var z = down ? -(dz == null ? 1.5 : dz) : 0, u = m.userData.top;
+      m.position.z = m.userData.z0 + z; if (u) u.pl.position.z = u.t.c.z + 0.04 + z;
+      if (edges && sel === m) edges.position.z = m.position.z;
+      glow(m, down ? 0.35 : m === sel ? 0.18 : m === hover ? 0.08 : 0); render();
+    }
+    function pick(x, y) { var m = hit({ clientX: x, clientY: y }); return m ? m.name : null; }
+    function resize(w, h) { if (!w || !h || (w === W && h === H)) return; W = w; H = h; r.setSize(W, H); aim(); anchor(); render(); }
+    function dispose() {
+      dead = true; if (raf) cancelAnimationFrame(raf); document.removeEventListener('visibilitychange', onVis);
+      r.dispose(); r.domElement.remove(); anc.remove(); stage.querySelectorAll('.nc-callout').forEach(function (n) { n.remove(); });
+    }
+    return { select: select, legends: legends, lcd: function (L) { lcd(L); render(); },
+      hover: function (n) { hoverOn(byName[n] || null); }, press: press, pick: pick, resize: resize, dispose: dispose,
+      invalidate: render, frames: function () { return frames; } };
   }
 
   function studio(THREE, r) { // petit studio pour les reflets : une boîte sombre et trois panneaux lumineux

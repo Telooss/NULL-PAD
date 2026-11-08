@@ -36,6 +36,10 @@ const mock = {
     return 'ok';
   },
   status: () => ({ engine: true, profile: 1 }),
+  // Legendes de la couche 0 du vrai keymap (K11, K19 : actions).
+  native_keys: () => ({ K00: 'VERR NUM', K01: '/', K02: '*', K03: '−', K04: '7', K05: '8', K06: '9', K07: '+', K08: '4', K09: '5', K10: '6',
+    K12: '1', K13: '2', K14: '3', K15: 'ENTRÉE', K16: '0', K17: '00', K18: '.', M1: 'P1', M2: 'P2', M3: 'P3',
+    ENC_L_CW: 'VOL+', ENC_L_CCW: 'VOL−', ENC_L_PRESS: 'MUET' }),
 };
 
 if (!T && new URLSearchParams(location.search).get('demo') === '1') {
