@@ -25,3 +25,19 @@ textarea.nc-input { resize: vertical; }
 .nc-file .tx span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nc-modal { position: absolute; inset: 0; z-index: 70; display: grid; place-items: center; background: rgba(8, 7, 10, .6); }
 .nc-modal .nc-panel { width: 400px; }
+
+/* Fix largeur (Task 9) : rien ne force la grille au-dela de la fenetre ; panneau fixe a 400 px. */
+.nc-app { grid-template-columns: minmax(0, 1fr); }
+.nc-topbar { min-width: 0; }
+.nc-main { grid-template-columns: minmax(0, 1fr) 400px; }
+.nc-panel, .nc-section, .nc-field, .nc-current .tx { min-width: 0; }
+.nc-current .tx span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nc-seg { flex-wrap: wrap; }
+.nc-seg button { flex: 1 0 auto; padding: 0 8px; }
+.nc-row .nc-input { flex: 1; }
+/* Sous 1400 px : pastilles, « Nouveau profil », « Configurer » et « Réglages » en icone seule (infobulle). */
+@media (max-width: 1399px) {
+  .nc-topbar .lbl { display: none; }
+  .nc-topbar .nc-pill, .nc-newprofile { padding: 0 8px; gap: 0; }
+  .nc-topbar .nc-btn:has(.lbl) { padding: 0 10px; gap: 0; }
+}

@@ -41,7 +41,7 @@
 .nc-topbar { display: flex; align-items: center; gap: 12px; padding: 0 24px; border-bottom: 1px solid var(--line-100); background: var(--surface-100); }
 .nc-topbar > .nc-label { margin-right: 4px; }
 .nc-slot {
-  height: 52px; min-width: 130px; flex-shrink: 1; padding: 0 14px 0 12px; display: flex; align-items: center; gap: 10px;
+  height: 52px; flex: 0 1 170px; min-width: 110px; padding: 0 14px 0 12px; display: flex; align-items: center; gap: 10px;
   border-radius: var(--radius-lg); border: 1px dashed var(--line-200); color: var(--ink-muted);
 }
 .nc-slot:hover { background: var(--surface-200); }

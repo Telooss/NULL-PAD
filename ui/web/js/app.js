@@ -211,7 +211,10 @@ onFileDrop(({ type, paths, x, y }) => {
 });
 
 const q = new URLSearchParams(location.search);
-if (q.get('test') === '1') window.__padFrames = () => pad.frames();
+if (q.get('test') === '1') {
+  window.__padFrames = () => pad.frames();
+  window.__layoutOk = () => document.querySelector('.nc-topbar').scrollWidth <= innerWidth && document.querySelector('.nc-panel').getBoundingClientRect().right <= innerWidth;
+}
 
 N.icons();
 N.wire(main);

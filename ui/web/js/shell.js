@@ -10,15 +10,19 @@ export function mountShell(slots, activeId) {
   const bar = document.querySelector('.nc-status');
   bar.innerHTML =
     '<span class="nc-pill" data-link></span><span class="nc-pill" data-engine></span>' +
-    '<button class="nc-btn is-primary" data-start style="display:none"><i data-lucide="play"></i>Démarrer le moteur</button>' +
-    '<span class="nc-pill" data-saved><i data-lucide="check"></i>Enregistré</span>' +
-    '<button class="nc-btn" data-configure><i data-lucide="pencil"></i>Configurer</button>' +
+    '<button class="nc-btn is-primary" data-start style="display:none" title="Démarrer le moteur"><i data-lucide="play"></i><span class="lbl">Démarrer le moteur</span></button>' +
+    '<span class="nc-pill" data-saved title="Enregistré"><i data-lucide="check"></i><span class="lbl">Enregistré</span></span>' +
+    '<button class="nc-btn" data-configure title="Configurer"><i data-lucide="pencil"></i><span class="lbl">Configurer</span></button>' +
     '<button class="nc-btn is-primary" data-save style="display:none"><i data-lucide="save"></i>Enregistrer</button>' +
     '<button class="nc-btn" data-cancel style="display:none"><i data-lucide="x"></i>Annuler</button>' +
-    '<button class="nc-btn"><i data-lucide="settings"></i>Réglages</button>';
+    '<button class="nc-btn" title="Réglages"><i data-lucide="settings"></i><span class="lbl">Réglages</span></button>';
+  // Libelles repliables sous 1400 px (app.css) ; l'infobulle garde le texte.
+  const np = document.querySelector('.nc-newprofile');
+  np.title = np.textContent.trim();
+  np.lastChild.replaceWith(Object.assign(document.createElement('span'), { className: 'lbl', textContent: np.title }));
   const q = (s) => bar.querySelector(s);
   let engineUp = false;
-  const pill = (el, icon, text) => { el.innerHTML = `<i data-lucide="${icon}"></i>${text}`; N.icons(); };
+  const pill = (el, icon, text) => { el.innerHTML = `<i data-lucide="${icon}"></i><span class="lbl">${text}</span>`; el.title = text; N.icons(); };
 
   return {
     setLink: (link) => pill(q('[data-link]'), LINK_ICON[link] ?? 'unplug', linkText(link)),
@@ -29,8 +33,8 @@ export function mountShell(slots, activeId) {
     },
     setSaved(ok, error) {
       const el = q('[data-saved]');
-      el.title = error ?? '';
       pill(el, ok ? 'check' : 'alert-triangle', ok ? 'Enregistré' : 'Erreur d’enregistrement');
+      if (error) el.title = error;
     },
     setActive: (id) => document.querySelectorAll('.nc-slot').forEach((s, i) => s.classList.toggle('is-active', slots[i]?.id === id)),
     setConfigurable: (ok) => { q('[data-configure]').disabled = !ok; q('[data-configure]').style.opacity = ok ? '' : '0.45'; },
