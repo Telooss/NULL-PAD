@@ -8,6 +8,7 @@ import { legendsFor, panelModel, profileOf, profileSlots } from './view.js';
 import { createDraft } from './draft.js';
 import { actionForDrop, refusal } from './drop.js';
 import { saveFlow, guard, confirmBox, modalOpen } from './config-mode.js';
+import { barSlots, nextFreeId, withNewProfile, withoutProfile, openCreate, openMenu, cleanTag, slotLabel, NAME_MAX } from './profiles.js';
 
 const N = window.NullCtl;
 const app = document.getElementById('app');
@@ -31,13 +32,29 @@ let draft = null; // non nul = mode configuration
 let configWaiter = null;
 let saving = false; // enregistrement en cours : boutons, profils, depots et panneau figes
 
-const shell = mountShell(slots, profileId);
+const shell = mountShell();
 stage.insertAdjacentHTML('beforeend', N.frame('0x4E50 // NODE 01 // NULL/PAD // ZMK', 'NP-01-DFLT-0001'));
 const banner = document.createElement('div');
 banner.className = 'nc-configbar nc-label';
 banner.textContent = 'CONFIG // NON ENREGISTRÉ';
 banner.hidden = true;
 stage.appendChild(banner);
+// Tete de la scene en configuration : nom et tag du profil (editent le brouillon).
+const rename = document.createElement('div');
+rename.className = 'nc-rename';
+rename.hidden = true;
+rename.innerHTML = `<label class="nc-label">Nom<input class="nc-input" data-name maxlength="${NAME_MAX}" spellcheck="false" autocomplete="off"></label>` +
+  '<label class="nc-label">Tag<input class="nc-input" data-tag maxlength="3" spellcheck="false" autocomplete="off" aria-describedby="nc-tag-hint"></label>' +
+  '<span class="nc-label" id="nc-tag-hint">A–Z 0–9 · 3 caractères</span>';
+stage.appendChild(rename);
+const nameIn = rename.querySelector('[data-name]');
+const tagIn = rename.querySelector('[data-tag]');
+
+// Barre des profils : relue depuis ce qui est affiche (le brouillon fusionne montre les renommages en cours).
+function renderBar() {
+  shell.setSlots(barSlots(shown()), profileId);
+  shell.setCanCreate(!cfgError && nextFreeId(cfg) !== null);
+}
 
 const requestConfig = () => { if (!cfgError && !draft) enterConfig(); };
 const viewPanel = createViewPanel(panelEl, { onConfigure: requestConfig });
@@ -52,6 +69,7 @@ const pad = createPad(stage, geo, { lcd: { top: '---', tag: '', bottom: '' } });
 
 // Ce qui est affiche : le brouillon fusionne en configuration, la config sinon.
 const shown = () => (draft ? draft.merged() : cfg);
+renderBar();
 
 function refreshPanel() {
   if (cfgError) return;
@@ -106,6 +124,7 @@ async function reload() {
     return;
   }
   if (!profileOf(cfg, profileId)) return;
+  renderBar();
   refreshPad();
   if (!draft) refreshPanel();
 }
@@ -117,6 +136,11 @@ function enterConfig() {
   banner.hidden = false;
   shell.setConfigMode(true);
   editPanel.setError(null);
+  nameIn.value = draft.get().name;
+  tagIn.value = draft.get().tag;
+  tagIn.removeAttribute('aria-invalid');
+  rename.hidden = false;
+  renderBar();
   refreshPad();
   refreshPanel();
 }
@@ -126,7 +150,9 @@ function exitConfig(follow = true) {
   draft = null;
   stage.classList.remove('is-config');
   banner.hidden = true;
+  rename.hidden = true;
   shell.setConfigMode(false);
+  renderBar();
   refreshPad();
   refreshPanel();
   if (follow && padProfile !== profileId) setProfile(padProfile, true);
@@ -148,6 +174,7 @@ async function commit(follow = true) {
   if (!draft || saving) return false;
   saving = true;
   panelEl.inert = true;
+  rename.inert = true;
   editPanel.setError(null);
   const merged = draft.merged();
   let r;
@@ -163,6 +190,7 @@ async function commit(follow = true) {
   } finally {
     saving = false;
     panelEl.inert = false;
+    rename.inert = false;
   }
   if (r.state === 'invalid' || r.state === 'rejected') {
     const msg = r.state === 'rejected' ? `Refusé par le moteur (brouillon gardé) : ${r.error}` : r.write ? `Écriture impossible : ${r.error}` : r.error;
@@ -201,12 +229,98 @@ shell.onCancel(async () => {
   exitConfig();
 });
 shell.onSlot(async (id) => {
+  if (saving) return;
   if (!draft) return setProfile(id, true);
   if (id === profileId || !profileOf(cfg, id)) return;
   if (saving || !(await leaveDraft(false))) return;
   setProfile(id, true);
   enterConfig(); // la configuration continue sur le profil choisi, avec un nouveau brouillon
 });
+// Renommer (configuration seulement) : le brouillon ne recoit que des valeurs valides, les champs se corrigent a la sortie.
+function applyMeta() {
+  const cur = draft.get();
+  const tag = cleanTag(tagIn.value);
+  if (tagIn.value !== tag) tagIn.value = tag;
+  tagIn.toggleAttribute('aria-invalid', tag.length !== 3);
+  draft.setProfileMeta({ name: nameIn.value.trim() || cur.name, tag: tag.length === 3 ? tag : cur.tag });
+  renderBar();
+  refreshLcd();
+}
+nameIn.addEventListener('input', applyMeta);
+tagIn.addEventListener('input', applyMeta);
+nameIn.addEventListener('blur', () => { if (draft) nameIn.value = draft.get().name; });
+tagIn.addEventListener('blur', () => { if (draft) { tagIn.value = draft.get().tag; tagIn.removeAttribute('aria-invalid'); } });
+
+// ── Creer / supprimer : ecriture immediate (validation, enregistrement, evenement du moteur), jamais avec un brouillon modifie ──
+// -> true si ecrit ; sinon un toast dit pourquoi et rien n'a change.
+async function writeNow(next) {
+  if (saving) return false;
+  saving = true;
+  panelEl.inert = true;
+  let r;
+  try {
+    r = await saveFlow({
+      json: JSON.stringify(next),
+      validate: (json) => invoke('validate_config', { json }),
+      save: (json) => invoke('save_config', { json }),
+      waitConfigEvent,
+      engineUp: shell.engineUp,
+    });
+  } finally {
+    saving = false;
+    panelEl.inert = false;
+  }
+  if (r.state === 'invalid' || r.state === 'rejected') {
+    toast(app, r.state === 'rejected' ? `Refusé par le moteur : ${r.error}` : r.write ? `Écriture impossible : ${r.error}` : `Config invalide : ${r.error}`);
+    return false;
+  }
+  cfg = await invoke('get_config');
+  shell.setSaved(true);
+  return true;
+}
+
+let creating = false;
+async function newProfile() {
+  if (saving || creating || modalOpen() || cfgError || nextFreeId(cfg) === null) return;
+  if (draft && !(await leaveDraft(false))) return;
+  const id = nextFreeId(cfg);
+  if (id === null) return;
+  const from = profileOf(cfg, profileId);
+  const preview = ({ tag, copy }) => {
+    pad.setLcd({ top: 'NEW', tag, bottom: `P${id}` });
+    pad.setLegends(legendsFor(withNewProfile(cfg, { name: '', tag, copyFrom: copy ? profileId : undefined }), id, natives));
+  };
+  creating = true;
+  const out = await openCreate(main, { id, from, onPreview: preview });
+  creating = false;
+  refreshPad();
+  if (!out || !(await writeNow(withNewProfile(cfg, { name: out.name, tag: out.tag, copyFrom: out.copy ? profileId : undefined })))) return;
+  profileId = id;
+  renderBar();
+  refreshPad();
+  refreshPanel();
+  N.glitch(app);
+  toast(app, `Profil ${out.name} créé · ${slotLabel(id)} → ${out.tag}`);
+}
+
+async function deleteProfile(id) {
+  const p = profileOf(cfg, id);
+  if (!p || id === 1 || saving || modalOpen()) return;
+  if (draft && !(await leaveDraft(false))) return;
+  const c = await confirmBox(app, { title: 'Supprimer le profil', text: `Supprimer le profil ${p.name} (${p.tag}) ? Ses actions seront perdues.`,
+    buttons: [['delete', 'Supprimer'], ['stay', 'Annuler', true]] });
+  if (c !== 'delete' || !(await writeNow(withoutProfile(cfg, id)))) return;
+  if (!profileOf(cfg, profileId)) profileId = 1;
+  if (!profileOf(cfg, padProfile)) padProfile = 1;
+  renderBar();
+  refreshPad();
+  refreshPanel();
+  N.glitch(app);
+  toast(app, `Profil ${p.name} supprimé`);
+}
+
+shell.onNew(newProfile);
+shell.onMenu((id, anchor) => openMenu(anchor, [['Supprimer le profil…', () => deleteProfile(id)]]));
 onCloseRequested(() => (!draft || guard(draft.dirty(), 'close') === 'proceed' ? true : leaveDraft(false)));
 
 refreshPad();
