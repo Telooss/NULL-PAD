@@ -3,6 +3,8 @@ pub mod native;
 pub mod pipes;
 pub mod settings;
 pub mod store;
+#[allow(dead_code)] // consommé par les tâches suivantes
+mod studio;
 
 use engine::config::{default_config, Config};
 use engine::ipc::Response;
