@@ -44,3 +44,8 @@ test('barSlots: emplacements M1-M3 (null si vide) puis profils 4-8', () => {
   assert.deepEqual(barSlots(mk(1, 3, 5)).map((s) => s && s.id), [1, null, 3, 5]);
   assert.deepEqual(barSlots(null), [null, null, null]);
 });
+
+test('withNewProfile: want utilise s il est libre, sinon plus petit libre', () => {
+  assert.equal(withNewProfile(mk(1), { name: 'a', tag: 'AAA', want: 3 }).profiles[1].id, 3);
+  assert.equal(withNewProfile(mk(1, 2), { name: 'a', tag: 'AAA', want: 2 }).profiles[2].id, 3);
+});

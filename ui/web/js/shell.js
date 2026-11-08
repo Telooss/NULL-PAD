@@ -29,7 +29,7 @@ export function mountShell() {
   const slotEl = (t) => t.closest('.nc-slot');
   topbar.addEventListener('click', (e) => {
     const s = slotEl(e.target);
-    if (s) return s.dataset.id ? cbs.slot(+s.dataset.id) : cbs.newProfile(); // emplacement vide : creer
+    if (s) return s.dataset.id ? cbs.slot(+s.dataset.id) : cbs.newProfile(+s.dataset.empty); // emplacement vide : creer ici
     const m = e.target.closest('.nc-slotmore');
     if (m) cbs.menu(+m.dataset.id, m);
   });
@@ -59,7 +59,7 @@ export function mountShell() {
       active = id;
       topbar.querySelectorAll('.nc-slot, .nc-slotmore').forEach((n) => n.remove());
       const html = list.map((s, i) => {
-        if (!s) return `<button class="nc-slot" title="Créer un profil"><span class="nc-m">M${i + 1}</span><span>Vide</span><i data-lucide="plus" style="margin-left:auto"></i></button>`;
+        if (!s) return `<button class="nc-slot" data-empty="${i + 1}" title="Créer un profil"><span class="nc-m">M${i + 1}</span><span>Vide</span><i data-lucide="plus" style="margin-left:auto"></i></button>`;
         return `<button class="nc-slot${s.id === active ? ' is-active' : ''}" data-id="${s.id}"><span class="nc-m">${slotLabel(s.id)}</span><span class="nc-sticker">${esc(s.name)}</span><span class="nc-tag">${esc(s.tag)}</span></button>` +
           (s.id === 1 ? '' : `<button class="nc-slotmore" data-id="${s.id}" aria-haspopup="menu" aria-label="Menu du profil ${esc(s.name)}" title="Menu du profil">⋯</button>`);
       }).join('');

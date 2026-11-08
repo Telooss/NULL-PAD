@@ -33,6 +33,8 @@ let configWaiter = null;
 let saving = false; // enregistrement en cours : boutons, profils, depots et panneau figes
 
 const shell = mountShell();
+const topbar = document.querySelector('.nc-topbar');
+let creating = false; // ecran de creation ouvert : barre des profils et mode configuration figes
 stage.insertAdjacentHTML('beforeend', N.frame('0x4E50 // NODE 01 // NULL/PAD // ZMK', 'NP-01-DFLT-0001'));
 const banner = document.createElement('div');
 banner.className = 'nc-configbar nc-label';
@@ -56,7 +58,7 @@ function renderBar() {
   shell.setCanCreate(!cfgError && nextFreeId(cfg) !== null);
 }
 
-const requestConfig = () => { if (!cfgError && !draft) enterConfig(); };
+const requestConfig = () => { if (!cfgError && !draft && !creating) enterConfig(); };
 const viewPanel = createViewPanel(panelEl, { onConfigure: requestConfig });
 const editPanel = createEditPanel(panelEl, { pickFile, onChange: () => refreshPad() });
 shell.setLink('none');
@@ -123,7 +125,7 @@ async function reload() {
   } catch {
     return;
   }
-  if (!profileOf(cfg, profileId)) return;
+  if (!profileOf(cfg, profileId)) profileId = 1;
   renderBar();
   refreshPad();
   if (!draft) refreshPanel();
@@ -229,7 +231,7 @@ shell.onCancel(async () => {
   exitConfig();
 });
 shell.onSlot(async (id) => {
-  if (saving) return;
+  if (saving || creating) return;
   if (!draft) return setProfile(id, true);
   if (id === profileId || !profileOf(cfg, id)) return;
   if (saving || !(await leaveDraft(false))) return;
@@ -238,6 +240,7 @@ shell.onSlot(async (id) => {
 });
 // Renommer (configuration seulement) : le brouillon ne recoit que des valeurs valides, les champs se corrigent a la sortie.
 function applyMeta() {
+  if (!draft) return;
   const cur = draft.get();
   const tag = cleanTag(tagIn.value);
   if (tagIn.value !== tag) tagIn.value = tag;
@@ -274,42 +277,51 @@ async function writeNow(next) {
     toast(app, r.state === 'rejected' ? `Refusé par le moteur : ${r.error}` : r.write ? `Écriture impossible : ${r.error}` : `Config invalide : ${r.error}`);
     return false;
   }
-  cfg = await invoke('get_config');
+  try {
+    cfg = await invoke('get_config');
+  } catch {
+    cfg = next; // ecrit mais relecture impossible : on continue sur ce qui vient d'etre ecrit
+    toast(app, 'Enregistré, mais la config n’a pas pu être relue');
+  }
   shell.setSaved(true);
   return true;
 }
 
-let creating = false;
-async function newProfile() {
+async function newProfile(want) {
   if (saving || creating || modalOpen() || cfgError || nextFreeId(cfg) === null) return;
   if (draft && !(await leaveDraft(false))) return;
-  const id = nextFreeId(cfg);
-  if (id === null) return;
-  const from = profileOf(cfg, profileId);
+  const id = withNewProfile(cfg, { name: '', tag: 'XXX', want }).profiles.find((p) => !profileOf(cfg, p.id)).id;
+  const fromId = profileId;
+  const from = profileOf(cfg, fromId);
   const preview = ({ tag, copy }) => {
     pad.setLcd({ top: 'NEW', tag, bottom: `P${id}` });
-    pad.setLegends(legendsFor(withNewProfile(cfg, { name: '', tag, copyFrom: copy ? profileId : undefined }), id, natives));
+    pad.setLegends(legendsFor(withNewProfile(cfg, { name: '', tag, copyFrom: copy ? fromId : undefined, want: id }), id, natives));
   };
   creating = true;
+  topbar.inert = true;
   const out = await openCreate(main, { id, from, onPreview: preview });
+  topbar.inert = false;
   creating = false;
   refreshPad();
-  if (!out || !(await writeNow(withNewProfile(cfg, { name: out.name, tag: out.tag, copyFrom: out.copy ? profileId : undefined })))) return;
-  profileId = id;
+  if (!out || draft) return;
+  const next = withNewProfile(cfg, { name: out.name, tag: out.tag, copyFrom: out.copy ? fromId : undefined, want: id });
+  const newId = next.profiles.find((p) => !profileOf(cfg, p.id)).id;
+  if (!(await writeNow(next))) return;
+  profileId = newId;
   renderBar();
   refreshPad();
   refreshPanel();
   N.glitch(app);
-  toast(app, `Profil ${out.name} créé · ${slotLabel(id)} → ${out.tag}`);
+  toast(app, `Profil ${out.name} créé · ${slotLabel(newId)} → ${out.tag}`);
 }
 
 async function deleteProfile(id) {
   const p = profileOf(cfg, id);
-  if (!p || id === 1 || saving || modalOpen()) return;
+  if (!p || id === 1 || saving || creating || modalOpen()) return;
   if (draft && !(await leaveDraft(false))) return;
   const c = await confirmBox(app, { title: 'Supprimer le profil', text: `Supprimer le profil ${p.name} (${p.tag}) ? Ses actions seront perdues.`,
     buttons: [['delete', 'Supprimer'], ['stay', 'Annuler', true]] });
-  if (c !== 'delete' || !(await writeNow(withoutProfile(cfg, id)))) return;
+  if (c !== 'delete' || draft || creating || !(await writeNow(withoutProfile(cfg, id)))) return;
   if (!profileOf(cfg, profileId)) profileId = 1;
   if (!profileOf(cfg, padProfile)) padProfile = 1;
   renderBar();
@@ -320,7 +332,7 @@ async function deleteProfile(id) {
 }
 
 shell.onNew(newProfile);
-shell.onMenu((id, anchor) => openMenu(anchor, [['Supprimer le profil…', () => deleteProfile(id)]]));
+shell.onMenu((id, anchor) => !creating && openMenu(anchor, [['Supprimer le profil…', () => deleteProfile(id)]]));
 onCloseRequested(() => (!draft || guard(draft.dirty(), 'close') === 'proceed' ? true : leaveDraft(false)));
 
 refreshPad();

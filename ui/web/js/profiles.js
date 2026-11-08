@@ -27,8 +27,10 @@ export function nextFreeId(config) {
   return null;
 }
 
-export function withNewProfile(config, { name, tag, copyFrom }) {
-  const id = nextFreeId(config);
+// want : id souhaite (emplacement M choisi), utilise s'il est libre.
+export function withNewProfile(config, { name, tag, copyFrom, want }) {
+  const taken = (config?.profiles ?? []).some((p) => p.id === want);
+  const id = want >= 1 && want <= MAX_PROFILES && !taken ? want : nextFreeId(config);
   if (id === null) throw new Error(`${MAX_PROFILES} profils au maximum`);
   const src = copyFrom == null ? null : config.profiles.find((p) => p.id === copyFrom);
   const out = structuredClone(config);
@@ -120,7 +122,7 @@ export function openCreate(host, { id, from, onPreview }) {
     const q = (s) => wrap.querySelector(s);
     const name = q('.cp-name');
     q('.cp-ghost').textContent = String(id).padStart(2, '0');
-    q('.cp-w98').textContent = `Écriture de la couche ${id} dans le NULL/PAD…`;
+    q('.cp-w98').textContent = `Enregistrement du profil ${id} dans la config…`;
     q('.cp-step').textContent = `Nouveau profil · ${id <= 3 ? `emplacement M${id}` : 'sans touche M'} · couche ZMK ${id} sur ${MAX_PROFILES}`;
     q('.cp-mnote').textContent = id <= 3 ? `La touche M${id} est fixée par le firmware : rien à régler.` : 'Pas de touche M : atteignable par ZMK Studio.';
     const slots = q('.cp-slots');
@@ -174,6 +176,12 @@ export function openCreate(host, { id, from, onPreview }) {
     const key = (e) => {
       if (e.key === 'Escape') { e.stopPropagation(); done(null); }
       else if (e.key === 'Enter' && e.target.tagName !== 'BUTTON') { e.preventDefault(); submit(); }
+      else if (e.key === 'Tab') { // focus garde dans la boite
+        const f = [...wrap.querySelectorAll('input, button:not(:disabled):not([hidden])')];
+        const i = f.indexOf(document.activeElement);
+        e.preventDefault();
+        f[(i + (e.shiftKey ? -1 : 1) + f.length) % f.length].focus();
+      }
     };
     go.onclick = submit;
     q('.cp-cancel').onclick = () => done(null);
