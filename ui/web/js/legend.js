@@ -20,7 +20,7 @@ function ofAction(a) {
     case 'VolumeMute': return 'MUTE';
     case 'MicMute': return 'MIC';
     case 'Media': return { PlayPause: 'PLAY', Next: 'NEXT', Prev: 'PREV', Stop: 'STOP' }[a.key] ?? 'MEDIA';
-    case 'Toggle': return ofAction(a.on);
+    case 'Toggle': return a.on ? ofAction(a.on) : 'BASCULE';
     default: return a.type.replace(/([a-z])([A-Z])/g, '$1 $2').toUpperCase();
   }
 }

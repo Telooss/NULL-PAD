@@ -67,3 +67,15 @@ test('addSound works without a sound section', () => {
   d.addSound({ id: 'n' });
   assert.deepEqual(d.merged().sound.sounds, [{ id: 'n' }]);
 });
+test('updateSound patches the library, dirty, merged', () => {
+  const c = cfg(); c.sound.sounds = [{ id: 'a', path: 'a.wav', volume: 100, on_repeat: 'Restart' }]; const orig = structuredClone(c);
+  const d = createDraft(c, 2);
+  d.updateSound('a', { volume: 40 });
+  assert.equal(d.dirty(), true);
+  assert.equal(d.sounds()[0].volume, 40);
+  assert.equal(d.merged().sound.sounds[0].volume, 40);
+  d.updateSound('a', { volume: 100 });
+  assert.equal(d.dirty(), false);
+  d.updateSound('zz', { volume: 1 });
+  assert.deepEqual(c, orig);
+});

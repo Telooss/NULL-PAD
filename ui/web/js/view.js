@@ -34,7 +34,7 @@ function detail(a) {
     case 'ObsReplaySave': return 'Sauver le replay';
     case 'MidiNote': return `Canal ${a.channel} · note ${a.note} · vélocité ${a.velocity}`;
     case 'MidiCc': return `Canal ${a.channel} · CC ${a.cc} · valeur ${a.value}`;
-    case 'Toggle': return `${describeAction(a.on).title} ⇄ ${describeAction(a.off).title}`;
+    case 'Toggle': return `${a.on ? describeAction(a.on).title : '?'} ⇄ ${a.off ? describeAction(a.off).title : '?'}`;
     default: return '';
   }
 }

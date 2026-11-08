@@ -7,15 +7,17 @@ export function canBind(profileId, input, natives = {}) {
 // JSON a cles triees : comparaison independante de l'ordre des cles et des liaisons.
 const canon = (v) => JSON.stringify(v, (_, x) => (x && typeof x === 'object' && !Array.isArray(x)
   ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, x[k]])) : x));
-const norm = (p, sounds = []) => canon({ name: p.name, tag: p.tag,
-  sounds, bindings: [...p.bindings].sort((a, b) => (a.input + a.trigger).localeCompare(b.input + b.trigger)) });
+const norm = (p) => canon({ name: p.name, tag: p.tag,
+  bindings: [...p.bindings].sort((a, b) => (a.input + a.trigger).localeCompare(b.input + b.trigger)) });
 
 export function createDraft(config, profileId) {
   const base = structuredClone(config);
   const idx = base.profiles.findIndex((p) => p.id === profileId);
   if (idx < 0) throw new Error(`profil ${profileId} inconnu`);
   const start = norm(base.profiles[idx]);
-  const added = [];
+  // Bibliotheque de sons (globale) : ajouts par depot, volume et rappui edites.
+  const lib = structuredClone(base.sound?.sounds ?? []);
+  const libStart = canon(lib);
   const cur = structuredClone(base.profiles[idx]);
   return {
     get: () => cur,
@@ -28,14 +30,19 @@ export function createDraft(config, profileId) {
     },
     // SoundDef issu d'un depot de fichier ; ignore si l'id existe deja.
     addSound(def) {
-      if (![...(base.sound?.sounds ?? []), ...added].some((s) => s.id === def.id)) added.push(structuredClone(def));
+      if (!lib.some((s) => s.id === def.id)) lib.push(structuredClone(def));
     },
+    updateSound(id, patch) {
+      const s = lib.find((x) => x.id === id);
+      if (s) Object.assign(s, patch);
+    },
+    sounds: () => lib,
     setProfileMeta({ name, tag }) { cur.name = name; cur.tag = tag; },
-    dirty: () => norm(cur, added) !== start,
+    dirty: () => norm(cur) !== start || canon(lib) !== libStart,
     merged() {
       const out = structuredClone(base);
       out.profiles[idx] = structuredClone(cur);
-      if (added.length) out.sound = { ...out.sound, sounds: [...(out.sound?.sounds ?? []), ...structuredClone(added)] };
+      if (canon(lib) !== libStart) out.sound = { ...out.sound, sounds: structuredClone(lib) };
       return out;
     },
   };
