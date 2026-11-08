@@ -3,6 +3,8 @@ pub mod client;
 #[cfg(test)]
 pub(crate) mod fake;
 pub mod framing;
+pub mod hid;
+pub mod model;
 pub mod port;
 
 #[allow(clippy::all, dead_code)]
