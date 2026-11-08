@@ -13,13 +13,17 @@ export function mountShell(slots, activeId) {
     '<button class="nc-btn is-primary" data-start style="display:none"><i data-lucide="play"></i>Démarrer le moteur</button>' +
     '<span class="nc-pill" data-saved><i data-lucide="check"></i>Enregistré</span>' +
     '<button class="nc-btn" data-configure><i data-lucide="pencil"></i>Configurer</button>' +
+    '<button class="nc-btn is-primary" data-save style="display:none"><i data-lucide="save"></i>Enregistrer</button>' +
+    '<button class="nc-btn" data-cancel style="display:none"><i data-lucide="x"></i>Annuler</button>' +
     '<button class="nc-btn"><i data-lucide="settings"></i>Réglages</button>';
   const q = (s) => bar.querySelector(s);
+  let engineUp = false;
   const pill = (el, icon, text) => { el.innerHTML = `<i data-lucide="${icon}"></i>${text}`; N.icons(); };
 
   return {
     setLink: (link) => pill(q('[data-link]'), LINK_ICON[link] ?? 'unplug', linkText(link)),
     setEngine(up) {
+      engineUp = up;
       pill(q('[data-engine]'), up ? 'cpu' : 'power-off', up ? 'Moteur en marche' : 'Moteur arrêté');
       q('[data-start]').style.display = up ? 'none' : '';
     },
@@ -33,5 +37,14 @@ export function mountShell(slots, activeId) {
     onSlot: (cb) => document.querySelectorAll('.nc-slot').forEach((s, i) => s.addEventListener('click', () => slots[i] && cb(slots[i].id))),
     onStart: (cb) => q('[data-start]').addEventListener('click', cb),
     onConfigure: (cb) => q('[data-configure]').addEventListener('click', cb),
+    engineUp: () => engineUp,
+    // Mode configuration : « Configurer » cede la place a « Enregistrer » et « Annuler ».
+    setConfigMode(on) {
+      q('[data-configure]').style.display = on ? 'none' : '';
+      q('[data-save]').style.display = on ? '' : 'none';
+      q('[data-cancel]').style.display = on ? '' : 'none';
+    },
+    onSave: (cb) => q('[data-save]').addEventListener('click', cb),
+    onCancel: (cb) => q('[data-cancel]').addEventListener('click', cb),
   };
 }

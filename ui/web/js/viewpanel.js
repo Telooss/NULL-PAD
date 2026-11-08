@@ -8,7 +8,7 @@ const current = (a) => `<div class="nc-current"><span class="ic"><i data-lucide=
 const none = '<div class="nc-note"><i data-lucide="minus"></i><span>Aucune action</span></div>';
 const note = (t) => `<div class="nc-note"><i data-lucide="info"></i><span>${esc(t)}</span></div>`;
 
-function minimap(input) {
+export function minimap(input) {
   let m = '';
   for (let i = 0; i < 20; i++) m += `<i class="${INPUTS[i] === input ? 'sel' : ''}"></i>`;
   return `<div class="nc-minimap">${m}<span class="mrow">${['M1', 'M2', 'M3'].map((k) => `<i class="v${k === input ? ' sel' : ''}"></i>`).join('')}</span></div>`;

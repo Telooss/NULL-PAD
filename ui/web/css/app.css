@@ -4,3 +4,24 @@ html, body { margin: 0; background: var(--bg-000); overflow: hidden; }
 .nc-titlebar { user-select: none; }
 .nc-winctl span:hover { background: var(--surface-200); color: var(--ink); }
 .nc-winctl span:last-child:hover { background: #c42b3a; color: var(--on-violet); }
+
+/* Mode configuration (Task 9) : seulement des tokens et composants existants, aucun effet. */
+.nc-stage.is-config { border-color: var(--violet-500); }
+.nc-configbar { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 3; padding: 4px 10px;
+  background: var(--violet-900); color: var(--ink); border: 1px solid var(--violet-500); border-radius: var(--radius-sm); white-space: nowrap; }
+.nc-configbar[hidden] { display: none; }
+.nc-panel-body { flex: 1; min-height: 0; overflow: auto; padding-bottom: 14px; display: grid; align-content: start; }
+.nc-input { width: 100%; box-sizing: border-box; min-width: 0; padding: 8px 10px; border: 1px solid var(--line-200); border-radius: var(--radius-md);
+  background: var(--surface-200); color: var(--ink); font: inherit; font-size: 13px; }
+textarea.nc-input { resize: vertical; }
+.nc-input:focus-visible, .nc-check:focus-visible { outline: 1px solid var(--violet-500); outline-offset: 0; }
+.nc-row { display: flex; align-items: center; gap: 8px; }
+.nc-steps { display: grid; gap: 8px; }
+.nc-step { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line-100); border-radius: var(--radius-md); background: var(--bg-100); }
+.nc-btn.nc-btn-sm { height: 28px; padding: 0 6px; }
+.nc-check { cursor: pointer; }
+.nc-slider .track input { position: absolute; inset: -6px 0; width: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.nc-file { min-width: 0; }
+.nc-file .tx span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nc-modal { position: absolute; inset: 0; z-index: 70; display: grid; place-items: center; background: rgba(8, 7, 10, .6); }
+.nc-modal .nc-panel { width: 400px; }

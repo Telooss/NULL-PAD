@@ -1,14 +1,19 @@
-import { invoke, listen } from './bridge.js';
+import { invoke, listen, onFileDrop, pickFile, onCloseRequested } from './bridge.js';
 import { createPad } from './pad.js';
 import { mountShell } from './shell.js';
 import { createViewPanel } from './viewpanel.js';
+import { createEditPanel } from './editpanel.js';
 import { startLive, toast } from './live.js';
 import { legendsFor, panelModel, profileOf, profileSlots } from './view.js';
+import { createDraft } from './draft.js';
+import { actionForDrop } from './drop.js';
+import { saveFlow, guard, confirmBox } from './config-mode.js';
 
 const N = window.NullCtl;
 const app = document.getElementById('app');
 const stage = document.getElementById('stage');
 const main = document.getElementById('main');
+const panelEl = document.getElementById('panel');
 
 let cfg = null;
 let cfgError = null;
@@ -19,41 +24,65 @@ const [natives, geo] = await Promise.all([
 
 const slots = profileSlots(cfg);
 let profileId = slots.find(Boolean)?.id ?? 1;
+let padProfile = profileId; // dernier profil annonce par le pad
 let selected = null;
 let link = 'none';
+let draft = null; // non nul = mode configuration
+let configWaiter = null;
 
 const shell = mountShell(slots, profileId);
 stage.insertAdjacentHTML('beforeend', N.frame('0x4E50 // NODE 01 // NULL/PAD // ZMK', 'NP-01-DFLT-0001'));
-const panel = createViewPanel(document.getElementById('panel'), {
-  onConfigure: () => document.dispatchEvent(new CustomEvent('request-config-mode', { detail: { profileId } })),
-});
+const banner = document.createElement('div');
+banner.className = 'nc-configbar nc-label';
+banner.textContent = 'CONFIG // NON ENREGISTRÉ';
+banner.hidden = true;
+stage.appendChild(banner);
+
+const requestConfig = () => { if (!cfgError && !draft) enterConfig(); };
+const viewPanel = createViewPanel(panelEl, { onConfigure: requestConfig });
+const editPanel = createEditPanel(panelEl, { pickFile, onChange: () => refreshPad() });
 shell.setLink('none');
 shell.setEngine(false);
-shell.onConfigure(() => !cfgError && document.dispatchEvent(new CustomEvent('request-config-mode', { detail: { profileId } })));
+shell.onConfigure(requestConfig);
 shell.setConfigurable(!cfgError);
-if (cfgError) panel.block(`Config illisible : ${cfgError} — corrigez le fichier ou réenregistrez depuis les réglages`);
+if (cfgError) viewPanel.block(`Config illisible : ${cfgError} — corrigez le fichier ou réenregistrez depuis les réglages`);
 
 const pad = createPad(stage, geo, { lcd: { top: '---', tag: '', bottom: '' } });
 
+// Ce qui est affiche : le brouillon fusionne en configuration, la config sinon.
+const shown = () => (draft ? draft.merged() : cfg);
+
 function refreshPanel() {
   if (cfgError) return;
-  panel.show(selected && { ...panelModel(cfg, profileId, selected, natives), input: selected });
+  if (draft) editPanel.show({ input: selected, draft, profileId, natives });
+  else viewPanel.show(selected && { ...panelModel(cfg, profileId, selected, natives), input: selected });
   N.wire(main);
 }
 
 function refreshLcd() {
   const top = { usb: 'USB', ble: 'BLE' }[link] ?? '---';
-  pad.setLcd({ top, tag: (profileOf(cfg, profileId)?.tag ?? '').toUpperCase(), bottom: `P${profileId}` });
+  pad.setLcd({ top, tag: (profileOf(shown(), profileId)?.tag ?? '').toUpperCase(), bottom: `P${profileId}` });
+}
+
+function refreshPad() {
+  pad.setLegends(legendsFor(shown(), profileId, natives));
+  refreshLcd();
 }
 
 function setProfile(id, glitch) {
   if (!profileOf(cfg, id) || (id === profileId && glitch)) return;
   profileId = id;
   shell.setActive(id);
-  pad.setLegends(legendsFor(cfg, id, natives));
-  refreshLcd();
+  refreshPad();
   refreshPanel();
   if (glitch) N.glitch(app);
+}
+
+// Profil annonce par le pad : suivi en mode vue ; en configuration, l'affichage reste sur le brouillon.
+function followPad(id, glitch) {
+  padProfile = id;
+  if (!draft) return setProfile(id, glitch);
+  if (id !== profileId && glitch) toast(app, `Le pad est passé sur ${profileOf(cfg, id)?.tag ?? `P${id}`}`);
 }
 
 function setLink(l) {
@@ -62,21 +91,123 @@ function setLink(l) {
   refreshLcd();
 }
 
-pad.setLegends(legendsFor(cfg, profileId, natives));
-refreshLcd();
-pad.onPick((input) => {
-  if (!input) return;
+function select(input) {
   selected = input;
   pad.select(input);
   refreshPanel();
-});
-shell.onSlot((id) => setProfile(id, true));
+}
 
-// Depot de fichier : refuse en mode vue (le depot natif de Tauri arrive avec le mode configuration).
-stage.addEventListener('dragover', (e) => e.preventDefault());
-stage.addEventListener('drop', (e) => {
-  e.preventDefault();
-  toast(app, 'Passer en configuration pour modifier');
+// Config relue sur le disque (apres un `config` ok ou notre propre enregistrement).
+async function reload() {
+  try {
+    cfg = await invoke('get_config');
+  } catch {
+    return;
+  }
+  if (!profileOf(cfg, profileId)) return;
+  refreshPad();
+  if (!draft) refreshPanel();
+}
+
+// ── Mode configuration ─────────────────────────────────────
+function enterConfig() {
+  draft = createDraft(cfg, profileId);
+  stage.classList.add('is-config');
+  banner.hidden = false;
+  shell.setConfigMode(true);
+  editPanel.setError(null);
+  refreshPad();
+  refreshPanel();
+}
+
+// follow : revenir au profil du pad (pas quand on quitte pour changer de profil affiche).
+function exitConfig(follow = true) {
+  draft = null;
+  stage.classList.remove('is-config');
+  banner.hidden = true;
+  shell.setConfigMode(false);
+  refreshPad();
+  refreshPanel();
+  if (follow && padProfile !== profileId) setProfile(padProfile, true);
+}
+
+const waitConfigEvent = (ms) => new Promise((resolve) => {
+  const t = setTimeout(() => { configWaiter = null; resolve(null); }, ms);
+  configWaiter = (e) => { clearTimeout(t); configWaiter = null; resolve(e); };
+});
+
+// Enregistre le brouillon ; true si c'est fait (et le mode quitte), false si le brouillon reste.
+async function commit(follow = true) {
+  editPanel.setError(null);
+  const merged = draft.merged();
+  const r = await saveFlow({
+    json: JSON.stringify(merged),
+    validate: (json) => invoke('validate_config', { json }),
+    save: (json) => invoke('save_config', { json }),
+    waitConfigEvent,
+    engineUp: shell.engineUp,
+    discard: () => { cfg = merged; exitConfig(follow); },
+  });
+  if (r.state === 'invalid' || r.state === 'rejected') {
+    editPanel.setError(r.state === 'rejected' ? `Refusé par le moteur (brouillon gardé) : ${r.error}` : r.error);
+    toast(app, r.state === 'rejected' ? 'Refusé par le moteur' : 'Config invalide : rien n’a été écrit');
+    return false;
+  }
+  toast(app, r.state === 'saved' ? 'Enregistré' : 'Enregistré, pris en compte au démarrage du moteur');
+  shell.setSaved(true);
+  N.glitch(app);
+  reload();
+  return true;
+}
+
+const LEAVE = { title: 'Changements non enregistrés', text: 'Le brouillon de ce profil a des changements non enregistrés.',
+  buttons: [['save', 'Enregistrer', true], ['discard', 'Abandonner'], ['stay', 'Rester']] };
+
+// Quitter le brouillon (changer de profil, fermer) : true si on peut partir.
+async function leaveDraft(follow) {
+  if (guard(draft.dirty(), 'leave') === 'proceed') { exitConfig(follow); return true; }
+  const c = await confirmBox(app, LEAVE);
+  if (c === 'save') return commit(follow);
+  if (c === 'discard') { exitConfig(follow); return true; }
+  return false;
+}
+
+shell.onSave(() => { if (draft) commit(); });
+shell.onCancel(async () => {
+  if (!draft) return;
+  if (guard(draft.dirty(), 'cancel') === 'ask') {
+    const c = await confirmBox(app, { title: 'Annuler la configuration', text: 'Les changements non enregistrés seront perdus.',
+      buttons: [['discard', 'Abandonner les changements'], ['stay', 'Rester', true]] });
+    if (c !== 'discard') return;
+  }
+  exitConfig();
+});
+shell.onSlot(async (id) => {
+  if (!draft) return setProfile(id, true);
+  if (id === profileId || !profileOf(cfg, id)) return;
+  if (!(await leaveDraft(false))) return;
+  setProfile(id, true);
+  enterConfig(); // la configuration continue sur le profil choisi, avec un nouveau brouillon
+});
+onCloseRequested(() => (!draft || guard(draft.dirty(), 'close') === 'proceed' ? true : leaveDraft(false)));
+
+refreshPad();
+pad.onPick((input) => { if (input) select(input); });
+
+// Depot de fichiers (natif Tauri, ou mock) ecoute au niveau de la webview / du document.
+onFileDrop(({ type, paths, x, y }) => {
+  const target = type === 'leave' ? null : pad.pickAt(x, y);
+  if (type !== 'drop') { if (draft) pad.hover(target); return; }
+  pad.hover(null);
+  if (!draft) return toast(app, 'Passer en configuration pour modifier');
+  if (!target) return toast(app, 'Déposer le fichier sur une touche ou une molette');
+  const out = actionForDrop(paths, target, profileId, natives, draft.sounds().map((s) => s.id));
+  if (out.error) return toast(app, out.error);
+  if (out.sound) draft.addSound(out.sound);
+  draft.set(target, 'Press', { action: out.action });
+  refreshPad();
+  select(target);
+  if (out.warning) toast(app, out.warning);
 });
 
 const q = new URLSearchParams(location.search);
@@ -86,8 +217,13 @@ N.icons();
 N.wire(main);
 
 await startLive({
-  invoke, listen, app, pad, shell, setProfile, setLink,
-  binding: (input, trigger) => profileOf(cfg, profileId)?.bindings.find((b) => b.input === input && b.trigger === trigger),
+  invoke, listen, app, pad, shell, setProfile: followPad, setLink,
+  // L'evenement `action` ne porte pas de profil : celui du pad, pas celui affiche.
+  binding: (input, trigger, p) => profileOf(cfg, p ?? padProfile)?.bindings.find((b) => b.input === input && b.trigger === trigger),
+  onConfig: (e) => {
+    if (configWaiter) configWaiter(e);
+    else if (e.ok) reload();
+  },
 });
 
 // Boutons de fenetre : seulement sous Tauri (voir capabilities/default.json).

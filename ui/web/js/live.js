@@ -15,8 +15,8 @@ export function toast(app, text) {
   setTimeout(() => t.remove(), 4000);
 }
 
-// ctx : { invoke, listen, app, pad, shell, binding(input, trigger), setProfile(id, glitch), setLink(link) }
-export async function startLive({ invoke, listen, app, pad, shell, binding, setProfile, setLink }) {
+// ctx : { invoke, listen, app, pad, shell, binding(input, trigger, profile), setProfile(id, glitch), setLink(link), onConfig(e) }
+export async function startLive({ invoke, listen, app, pad, shell, binding, setProfile, setLink, onConfig }) {
   async function probe(follow) {
     try {
       const s = await invoke('engine_status');
@@ -32,10 +32,10 @@ export async function startLive({ invoke, listen, app, pad, shell, binding, setP
   await listen('engine-event', ({ payload: e }) => {
     switch (e.type) {
       case 'key': pad.press(e.input, e.down); break;
-      case 'action': toast(app, toastText(e, binding(e.input, e.trigger))); break;
+      case 'action': toast(app, toastText(e, binding(e.input, e.trigger, e.profile))); break;
       case 'profile': setProfile(e.profile, true); break;
       case 'link': setLink(e.link); break;
-      case 'config': shell.setSaved(e.ok, e.error); break;
+      case 'config': shell.setSaved(e.ok, e.error); onConfig(e); break;
     }
   });
   await listen('engine-up', () => probe(true));

@@ -37,10 +37,18 @@ const emit = (evt, payload) => (listeners.get(evt) || []).forEach((cb) => cb({ e
 
 const mock = {
   get_config: () => structuredClone(mockCfg),
-  save_config: ({ config }) => {
-    if (!config || config.version !== 1 || !Array.isArray(config.profiles)) throw 'config invalide';
-    mockCfg = structuredClone(config);
-    return 'ok';
+  // Le vrai controle est engine::config::parse cote Rust ; le mock ne verifie que la forme et les sons.
+  validate_config: ({ json }) => {
+    const c = JSON.parse(json);
+    if (c.version !== 1 || !Array.isArray(c.profiles)) throw 'config invalide';
+    const ids = new Set((c.sound?.sounds ?? []).map((x) => x.id));
+    const miss = [...JSON.stringify(c.profiles).matchAll(/"type":"Sound","id":"([^"]*)"/g)].map((m) => m[1]).find((id) => !ids.has(id));
+    if (miss !== undefined) throw `config invalide: son "${miss}" absent de sound.sounds`;
+  },
+  save_config: ({ json }) => {
+    mock.validate_config({ json });
+    mockCfg = JSON.parse(json);
+    setTimeout(() => emit('engine-event', { type: 'config', ok: true, error: null }), 200);
   },
   engine_status: () => ({ profile: mockProfile, link: 'usb', version: '0.1.0' }),
   start_engine: () => null,
@@ -83,3 +91,44 @@ export async function listen(evt, cb) {
 }
 
 export const isMock = !T;
+
+// Depot de fichiers natif (Tauri : position en pixels physiques, relative a la webview).
+// cb({ type: 'over' | 'drop' | 'leave', paths?, x, y }) en pixels CSS (clientX/Y).
+export function onFileDrop(cb) {
+  if (T) {
+    return T.webview.getCurrentWebview().onDragDropEvent(({ payload: p }) => {
+      const r = devicePixelRatio || 1;
+      cb({ type: p.type === 'enter' ? 'over' : p.type, paths: p.paths, x: (p.position?.x ?? 0) / r, y: (p.position?.y ?? 0) / r });
+    });
+  }
+  // Mock : __simulateDrop(paths, x, y), et un vrai depot HTML5 (noms de fichiers seulement) au niveau du document.
+  window.__simulateDrop = (paths, x, y) => { cb({ type: 'over', paths, x, y }); cb({ type: 'drop', paths, x, y }); };
+  document.addEventListener('dragover', (e) => { e.preventDefault(); cb({ type: 'over', x: e.clientX, y: e.clientY }); });
+  document.addEventListener('dragleave', (e) => { if (!e.relatedTarget) cb({ type: 'leave' }); });
+  document.addEventListener('drop', (e) => {
+    e.preventDefault();
+    cb({ type: 'drop', paths: [...(e.dataTransfer?.files ?? [])].map((f) => f.name), x: e.clientX, y: e.clientY });
+  });
+  return Promise.resolve(() => {});
+}
+
+// Selecteur de fichier Windows (tauri-plugin-dialog) ; null si annule.
+export async function pickFile({ filters = [] } = {}) {
+  if (T) return T.dialog.open({ multiple: false, directory: false, filters });
+  const audio = filters.some((f) => f.extensions.includes('mp3'));
+  return audio ? 'C:\\Sons\\nouveau.wav' : 'C:\\Programmes\\appli.exe';
+}
+
+// Fermeture de la fenetre : ask() -> true pour fermer (booleen ou promesse).
+export function onCloseRequested(ask) {
+  if (T) {
+    return T.window.getCurrentWindow().onCloseRequested(async (ev) => {
+      if (!(await ask())) ev.preventDefault();
+    });
+  }
+  // Mock : seul le dialogue natif du navigateur est possible.
+  window.addEventListener('beforeunload', (e) => {
+    if (ask() !== true) { e.preventDefault(); e.returnValue = ''; }
+  });
+  return Promise.resolve(() => {});
+}
