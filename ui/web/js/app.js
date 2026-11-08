@@ -1,49 +1,94 @@
 import { invoke, listen } from './bridge.js';
-import { createPad, inputOf } from './pad.js';
-import { legendFor, fitLegend } from './legend.js';
+import { createPad } from './pad.js';
+import { mountShell } from './shell.js';
+import { createViewPanel } from './viewpanel.js';
+import { startLive, toast } from './live.js';
+import { legendsFor, panelModel, profileOf, profileSlots } from './view.js';
 
 const N = window.NullCtl;
 const app = document.getElementById('app');
 const stage = document.getElementById('stage');
 const main = document.getElementById('main');
 
-const [cfg, natives, geo] = await Promise.all([
-  invoke('get_config'), invoke('native_keys'), fetch('assets/nullpad.json').then((r) => r.json()), N.fontsReady(),
+let cfg = null;
+let cfgError = null;
+const [natives, geo] = await Promise.all([
+  invoke('native_keys').catch(() => ({})), fetch('assets/nullpad.json').then((r) => r.json()), N.fontsReady(),
+  invoke('get_config').then((c) => { cfg = c; }, (e) => { cfgError = String(e); }),
 ]);
 
-const profiles = cfg.profiles.slice(0, 3).map((p) => ({ name: p.name, tag: p.tag }));
-while (profiles.length < 3) profiles.push(null);
-document.getElementById('shell').outerHTML = N.shell({ profiles, active: 0 });
-stage.insertAdjacentHTML('beforeend', N.frame('0x4E50 // NODE 01 // NULL/PAD // ZMK', 'NP-01-DFLT-0001'));
-document.getElementById('panel').innerHTML =
-  '<div class="nc-panel-head"><div><div class="nc-label">Touche</div><div class="nc-keyname">—</div></div></div>' +
-  '<div class="nc-section"><span class="nc-label">Choisis une touche</span></div>';
+const slots = profileSlots(cfg);
+let profileId = slots.find(Boolean)?.id ?? 1;
+let selected = null;
+let link = 'none';
 
-// Le pad 3D, legendes du profil 1.
-const pad = createPad(stage, geo, { lcd: { top: 'USB', tag: 'DEF', bottom: 'P1' } });
-const prof = cfg.profiles[0];
-const legends = {};
-for (let i = 1; i <= 23; i++) {
-  const input = inputOf(`F${i}`);
-  const l = legendFor(prof?.bindings.find((b) => b.input === input), natives, cfg.sound?.sounds, input);
-  legends[input] = { text: fitLegend(l.text), kind: l.kind };
+const shell = mountShell(slots, profileId);
+stage.insertAdjacentHTML('beforeend', N.frame('0x4E50 // NODE 01 // NULL/PAD // ZMK', 'NP-01-DFLT-0001'));
+const panel = createViewPanel(document.getElementById('panel'), {
+  onConfigure: () => document.dispatchEvent(new CustomEvent('request-config-mode', { detail: { profileId } })),
+});
+shell.setLink('none');
+shell.setEngine(false);
+shell.onConfigure(() => !cfgError && document.dispatchEvent(new CustomEvent('request-config-mode', { detail: { profileId } })));
+shell.setConfigurable(!cfgError);
+if (cfgError) panel.block(`Config illisible : ${cfgError} — corrigez le fichier ou réenregistrez depuis les réglages`);
+
+const pad = createPad(stage, geo, { lcd: { top: '---', tag: '', bottom: '' } });
+
+function refreshPanel() {
+  if (cfgError) return;
+  panel.show(selected && { ...panelModel(cfg, profileId, selected, natives), input: selected });
+  N.wire(main);
 }
-pad.setLegends(legends);
-pad.onPick((input) => { pad.select(input); N.wire(main); });
+
+function refreshLcd() {
+  const top = { usb: 'USB', ble: 'BLE' }[link] ?? '---';
+  pad.setLcd({ top, tag: (profileOf(cfg, profileId)?.tag ?? '').toUpperCase(), bottom: `P${profileId}` });
+}
+
+function setProfile(id, glitch) {
+  if (!profileOf(cfg, id) || (id === profileId && glitch)) return;
+  profileId = id;
+  shell.setActive(id);
+  pad.setLegends(legendsFor(cfg, id, natives));
+  refreshLcd();
+  refreshPanel();
+  if (glitch) N.glitch(app);
+}
+
+function setLink(l) {
+  link = l;
+  shell.setLink(l);
+  refreshLcd();
+}
+
+pad.setLegends(legendsFor(cfg, profileId, natives));
+refreshLcd();
+pad.onPick((input) => {
+  if (!input) return;
+  selected = input;
+  pad.select(input);
+  refreshPanel();
+});
+shell.onSlot((id) => setProfile(id, true));
+
+// Depot de fichier : refuse en mode vue (le depot natif de Tauri arrive avec le mode configuration).
+stage.addEventListener('dragover', (e) => e.preventDefault());
+stage.addEventListener('drop', (e) => {
+  e.preventDefault();
+  toast(app, 'Passer en configuration pour modifier');
+});
 
 const q = new URLSearchParams(location.search);
 if (q.get('test') === '1') window.__padFrames = () => pad.frames();
-if (q.get('demo') === '1') {
-  listen('engine-event', ({ payload: e }) => {
-    if (e.type !== 'key') return;
-    pad.press(e.input, true);
-    setTimeout(() => pad.press(e.input, false), 120);
-  });
-}
 
 N.icons();
 N.wire(main);
-document.querySelectorAll('.nc-slot').forEach((s) => s.addEventListener('click', () => N.glitch(app)));
+
+await startLive({
+  invoke, listen, app, pad, shell, setProfile, setLink,
+  binding: (input, trigger) => profileOf(cfg, profileId)?.bindings.find((b) => b.input === input && b.trigger === trigger),
+});
 
 // Boutons de fenetre : seulement sous Tauri (voir capabilities/default.json).
 const W = window.__TAURI__?.window?.getCurrentWindow?.();
