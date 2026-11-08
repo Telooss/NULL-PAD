@@ -1,5 +1,6 @@
 //! Source Raw Input : fenetre message-only qui recoit les rapports HID Consumer du NULL/PAD.
 use crate::dispatch::Dispatcher;
+use crate::ipc::{Event, Link};
 use crate::report::{parse_consumer_report, ReportTracker};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -9,8 +10,8 @@ use windows::Win32::Foundation::{HANDLE, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::{
     GetRawInputData, GetRawInputDeviceInfoW, RegisterRawInputDevices, HRAWINPUT, RAWINPUTDEVICE,
-    RAWINPUTHEADER, RIDEV_DEVNOTIFY, RIDEV_INPUTSINK, RIDI_DEVICEINFO, RID_DEVICE_INFO, RID_INPUT,
-    RIM_TYPEHID,
+    RAWINPUTHEADER, RIDEV_DEVNOTIFY, RIDEV_INPUTSINK, RIDI_DEVICEINFO, RIDI_DEVICENAME,
+    RID_DEVICE_INFO, RID_INPUT, RIM_TYPEHID,
 };
 use windows::Win32::UI::WindowsAndMessaging::*;
 
@@ -82,6 +83,35 @@ fn lookup(filter: DeviceFilter, dev: HANDLE) -> Lookup {
     } else {
         Lookup::Other
     }
+}
+
+/// Un peripherique HID en Bluetooth LE a `BTHLE` ou le GUID du service HID (0x1812) dans son chemin.
+pub fn link_of_path(path: &str) -> Link {
+    let p = path.to_ascii_uppercase();
+    if p.contains("BTHLE") || p.contains("{00001812-") {
+        Link::Ble
+    } else {
+        Link::Usb
+    }
+}
+
+fn link_of(dev: HANDLE) -> Link {
+    let mut size = 0u32; // en caracteres
+    unsafe { GetRawInputDeviceInfoW(Some(dev), RIDI_DEVICENAME, None, &mut size) };
+    let mut buf = vec![0u16; size as usize];
+    let n = unsafe {
+        GetRawInputDeviceInfoW(
+            Some(dev),
+            RIDI_DEVICENAME,
+            Some(buf.as_mut_ptr() as *mut _),
+            &mut size,
+        )
+    };
+    if n == u32::MAX {
+        tracing::warn!("chemin du NULL/PAD illisible, lien suppose USB");
+        return Link::Usb;
+    }
+    link_of_path(&String::from_utf16_lossy(&buf))
 }
 
 fn is_ours(st: &mut State, dev: HANDLE) -> bool {
@@ -162,9 +192,18 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM)
                         // Les Up de clear() sont ignores : device_lost remet les declencheurs a zero.
                         let _ = st.tracker.clear();
                         st.dispatcher.device_lost();
+                        // Branche en USB et en BLE a la fois : le lien restant prend le relais.
+                        let link = st
+                            .devices
+                            .iter()
+                            .find(|(_, &ours)| ours)
+                            .map_or(Link::None, |(&k, _)| link_of(HANDLE(k as _)));
+                        st.dispatcher.events().emit(&Event::Link { link });
                     }
-                } else {
-                    is_ours(st, dev);
+                } else if is_ours(st, dev) {
+                    st.dispatcher
+                        .events()
+                        .emit(&Event::Link { link: link_of(dev) });
                 }
             }
             _ => return None,
@@ -261,5 +300,14 @@ mod tests {
         let v: Vec<_> = split_reports(3, 2, &data).collect();
         assert_eq!(v, [&[1, 2, 3][..], &[4, 5, 6][..]]);
         assert_eq!(split_reports(3, 5, &data).count(), 2);
+    }
+
+    #[test]
+    fn link_from_device_path() {
+        let ble = r"\\?\HID#{00001812-0000-1000-8000-00805f9b34fb}_Dev_VID&021d50_PID&615e_REV&0001#a&1&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}";
+        assert_eq!(link_of_path(ble), Link::Ble);
+        assert_eq!(link_of_path(r"\\?\hid#bthledevice#x"), Link::Ble);
+        let usb = r"\\?\HID#VID_1D50&PID_615E&MI_00&Col02#8&2c0b1e7b&0&0001#{4d1e55b2-f16f-11cf-88cb-001111000030}";
+        assert_eq!(link_of_path(usb), Link::Usb);
     }
 }

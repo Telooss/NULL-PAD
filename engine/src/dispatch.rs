@@ -4,11 +4,12 @@ use crate::actions::keys::{parse_shortcut, send_media, send_shortcut, send_text}
 use crate::actions::launch::{command, launch, open};
 use crate::codes::{decode, Code, InputId};
 use crate::config::{Action, Config, Step};
+use crate::ipc::{Event, Events};
 use crate::midi::{cc, note_off, note_on, Midi};
 use crate::obs::ObsHandle;
 use crate::report::Edge;
 use crate::sound::board::Soundboard;
-use crate::triggers::{Fire, Triggers};
+use crate::triggers::{Fire, Trigger, Triggers};
 use arc_swap::ArcSwap;
 use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;
@@ -19,7 +20,36 @@ use std::time::{Duration, Instant};
 
 /// Execute une action unitaire (jamais Macro ni Toggle : le Dispatcher les resout).
 pub trait Executor: Send + Sync {
-    fn run(&self, action: &Action);
+    fn run(&self, action: &Action) -> Result<(), String>;
+}
+
+/// Nom de la variante, envoye a l'interface comme `kind`.
+pub fn kind(a: &Action) -> &'static str {
+    match a {
+        Action::Shortcut { .. } => "Shortcut",
+        Action::Text { .. } => "Text",
+        Action::Macro { .. } => "Macro",
+        Action::Launch { .. } => "Launch",
+        Action::Open { .. } => "Open",
+        Action::Command { .. } => "Command",
+        Action::Media { .. } => "Media",
+        Action::Volume { .. } => "Volume",
+        Action::VolumeMute => "VolumeMute",
+        Action::MicVolume { .. } => "MicVolume",
+        Action::MicMute => "MicMute",
+        Action::Toggle { .. } => "Toggle",
+        Action::Sound { .. } => "Sound",
+        Action::StopSounds => "StopSounds",
+        Action::SoundVolume { .. } => "SoundVolume",
+        Action::SoundMute => "SoundMute",
+        Action::ObsScene { .. } => "ObsScene",
+        Action::ObsMute { .. } => "ObsMute",
+        Action::ObsStream { .. } => "ObsStream",
+        Action::ObsRecord { .. } => "ObsRecord",
+        Action::ObsReplaySave => "ObsReplaySave",
+        Action::MidiNote { .. } => "MidiNote",
+        Action::MidiCc { .. } => "MidiCc",
+    }
 }
 
 pub struct SystemExecutor {
@@ -29,8 +59,8 @@ pub struct SystemExecutor {
 }
 
 impl Executor for SystemExecutor {
-    fn run(&self, action: &Action) {
-        let res: Result<(), String> = match action {
+    fn run(&self, action: &Action) -> Result<(), String> {
+        match action {
             Action::Shortcut { keys } => parse_shortcut(keys).map(|k| send_shortcut(&k)),
             Action::Text { text } => {
                 send_text(text);
@@ -90,22 +120,58 @@ impl Executor for SystemExecutor {
                 value,
             } => self.midi.send(&[cc(*channel, *n, *value)]),
             Action::Macro { .. } | Action::Toggle { .. } => Err("action non unitaire".into()),
-        };
-        if let Err(e) = res {
-            tracing::error!("action en erreur: {e}");
         }
     }
 }
 
-fn run_steps(exec: &dyn Executor, steps: Vec<Step>) {
+/// Execute toutes les etapes ; renvoie la premiere erreur (chaque erreur est journalisee).
+fn run_steps(exec: &dyn Executor, steps: Vec<Step>) -> Result<(), String> {
+    let mut first = Ok(());
     for s in steps {
-        match s {
-            Step::Wait { ms } => thread::sleep(Duration::from_millis(ms)),
+        let res = match s {
+            Step::Wait { ms } => {
+                thread::sleep(Duration::from_millis(ms));
+                continue;
+            }
             Step::Do {
                 action: Action::Macro { steps },
             } => run_steps(exec, steps),
-            Step::Do { action } => exec.run(&action),
+            Step::Do { action } => exec.run(&action).inspect_err(|e| {
+                tracing::error!("action en erreur: {e}");
+            }),
+        };
+        if first.is_ok() {
+            first = res;
         }
+    }
+    first
+}
+
+/// Ce qu'il faut pour rapporter le resultat d'une action a l'interface.
+struct Origin {
+    events: Events,
+    input: &'static str,
+    trigger: Trigger,
+}
+
+impl Origin {
+    fn report(&self, kind: &str, res: Result<(), String>) {
+        self.events.emit(&Event::Action {
+            input: self.input.into(),
+            trigger: self.trigger,
+            kind: kind.into(),
+            ok: res.is_ok(),
+            error: res.err(),
+        });
+    }
+
+    /// Action unitaire : journalise l'erreur et la rapporte.
+    fn run(&self, exec: &dyn Executor, a: &Action) {
+        let res = exec.run(a);
+        if let Err(e) = &res {
+            tracing::error!("action en erreur: {e}");
+        }
+        self.report(kind(a), res);
     }
 }
 
@@ -115,18 +181,20 @@ pub struct Dispatcher {
     triggers: Triggers,
     profile: Option<u8>,
     toggles: HashMap<(u8, InputId), bool>,
-    worker: Sender<Action>,
+    worker: Sender<(Action, Origin)>,
+    events: Events,
 }
 
 impl Dispatcher {
-    pub fn new(config: Arc<ArcSwap<Config>>, exec: Arc<dyn Executor>) -> Self {
-        let (worker, rx) = channel::<Action>();
+    pub fn new(config: Arc<ArcSwap<Config>>, exec: Arc<dyn Executor>, events: Events) -> Self {
+        let (worker, rx) = channel::<(Action, Origin)>();
         let e = exec.clone();
         thread::spawn(move || {
-            for a in rx {
+            for (a, o) in rx {
                 // Une panique ne doit pas tuer le worker : sinon plus aucune action clavier.
-                if std::panic::catch_unwind(AssertUnwindSafe(|| e.run(&a))).is_err() {
+                if std::panic::catch_unwind(AssertUnwindSafe(|| o.run(e.as_ref(), &a))).is_err() {
                     tracing::error!("panique dans une action: {a:?}");
+                    o.report(kind(&a), Err("panique".into()));
                 }
             }
         });
@@ -138,7 +206,12 @@ impl Dispatcher {
             profile: None,
             toggles: HashMap::new(),
             worker,
+            events,
         }
+    }
+
+    pub fn events(&self) -> &Events {
+        &self.events
     }
 
     pub fn current_profile(&self) -> Option<u8> {
@@ -157,6 +230,7 @@ impl Dispatcher {
         let fires = match edge {
             Edge::Down(u) => match decode(u) {
                 Some(Code::Action { profile, input }) => {
+                    self.key(input, true, profile);
                     let cfg = self.config.load();
                     let wants = cfg.wants(profile, input);
                     self.triggers.set_timing(cfg.timing);
@@ -164,16 +238,28 @@ impl Dispatcher {
                 }
                 Some(Code::ProfileAnnounce(p)) => {
                     self.profile = Some(p);
+                    self.events.emit(&Event::Profile { profile: p });
                     return;
                 }
                 None => return,
             },
             Edge::Up(u) => match decode(u) {
-                Some(Code::Action { profile, input }) => self.triggers.up(profile, input, now),
+                Some(Code::Action { profile, input }) => {
+                    self.key(input, false, profile);
+                    self.triggers.up(profile, input, now)
+                }
                 _ => return,
             },
         };
         fires.into_iter().for_each(|f| self.fire(f));
+    }
+
+    fn key(&self, input: InputId, down: bool, profile: u8) {
+        self.events.emit(&Event::Key {
+            input: input.name().into(),
+            down,
+            profile,
+        });
     }
 
     pub fn on_tick(&mut self, now: Instant) {
@@ -204,21 +290,26 @@ impl Dispatcher {
             }
             a => a,
         };
-        self.route(action);
+        let origin = Origin {
+            events: self.events.clone(),
+            input: f.input.name(),
+            trigger: f.trigger,
+        };
+        self.route(action, origin);
     }
 
-    fn route(&self, action: Action) {
+    fn route(&self, action: Action, o: Origin) {
         match action {
             Action::Macro { steps } => {
                 let exec = self.exec.clone();
-                thread::spawn(move || run_steps(exec.as_ref(), steps));
+                thread::spawn(move || o.report("Macro", run_steps(exec.as_ref(), steps)));
             }
             Action::Launch { .. } | Action::Open { .. } | Action::Command { .. } => {
                 let exec = self.exec.clone();
-                thread::spawn(move || exec.run(&action));
+                thread::spawn(move || o.run(exec.as_ref(), &action));
             }
             // Si le worker est mort, on perd l'action : rien d'autre a faire.
-            a => drop(self.worker.send(a)),
+            a => drop(self.worker.send((a, o))),
         }
     }
 }
@@ -229,16 +320,21 @@ mod tests {
     use crate::codes::encode_action;
     use crate::config::{Binding, ObsOp, Profile};
     use crate::triggers::{Timing, Trigger};
+    use std::sync::mpsc::Receiver;
     use std::sync::Mutex;
 
     #[derive(Default)]
     struct Rec(Mutex<Vec<(Instant, String)>>);
     impl Executor for Rec {
-        fn run(&self, a: &Action) {
+        fn run(&self, a: &Action) -> Result<(), String> {
             self.0
                 .lock()
                 .unwrap()
                 .push((Instant::now(), format!("{a:?}")));
+            match a {
+                Action::Text { text } if text.starts_with("fail") => Err(text.clone()),
+                _ => Ok(()),
+            }
         }
     }
     impl Rec {
@@ -270,12 +366,18 @@ mod tests {
     }
 
     fn setup(bindings: Vec<(u8, Action)>) -> (Dispatcher, Arc<Rec>) {
+        let (d, rec, _) = setup_ev(bindings);
+        (d, rec)
+    }
+
+    fn setup_ev(bindings: Vec<(u8, Action)>) -> (Dispatcher, Arc<Rec>, Receiver<String>) {
         let bindings = bindings
             .into_iter()
             .map(|(i, action)| Binding {
                 input: InputId(i),
                 trigger: Trigger::Press,
                 action,
+                label: None,
             })
             .collect();
         let cfg = Config {
@@ -292,8 +394,14 @@ mod tests {
             }],
         };
         let rec = Arc::new(Rec::default());
-        let d = Dispatcher::new(Arc::new(ArcSwap::from_pointee(cfg)), rec.clone());
-        (d, rec)
+        let (ev, rx) = Events::recording();
+        let d = Dispatcher::new(Arc::new(ArcSwap::from_pointee(cfg)), rec.clone(), ev);
+        (d, rec, rx)
+    }
+
+    fn next(rx: &Receiver<String>) -> String {
+        rx.recv_timeout(Duration::from_secs(5))
+            .expect("aucun evenement")
     }
 
     #[test]
@@ -375,11 +483,11 @@ mod tests {
 
     struct PanicFirst(Rec, std::sync::atomic::AtomicBool);
     impl Executor for PanicFirst {
-        fn run(&self, a: &Action) {
+        fn run(&self, a: &Action) -> Result<(), String> {
             if !self.1.swap(true, std::sync::atomic::Ordering::SeqCst) {
                 panic!("boom");
             }
-            self.0.run(a);
+            self.0.run(a)
         }
     }
 
@@ -387,7 +495,7 @@ mod tests {
     fn worker_survives_panic() {
         let cfg = setup(vec![(0, text("a")), (1, text("b"))]).0.config.clone();
         let ex = Arc::new(PanicFirst(Rec::default(), Default::default()));
-        let mut d = Dispatcher::new(cfg, ex.clone());
+        let mut d = Dispatcher::new(cfg, ex.clone(), Events::none());
         d.on_edge(Edge::Down(encode_action(1, InputId(0))), Instant::now());
         d.on_edge(Edge::Down(encode_action(1, InputId(1))), Instant::now());
         assert!(ex.0.wait_len(1));
@@ -401,9 +509,10 @@ mod tests {
             input: InputId(0),
             trigger: Trigger::Hold,
             action: text("h"),
+            label: None,
         }];
         let swap = Arc::new(ArcSwap::from_pointee(cfg.clone()));
-        let mut d = Dispatcher::new(swap.clone(), Arc::new(Rec::default()));
+        let mut d = Dispatcher::new(swap.clone(), Arc::new(Rec::default()), Events::none());
         cfg.timing.hold_ms = 1000;
         swap.store(Arc::new(cfg));
         let t0 = Instant::now();
@@ -482,5 +591,85 @@ mod tests {
         let (mut d, _) = setup(vec![]);
         d.on_edge(Edge::Down(0x0603), Instant::now());
         assert_eq!(d.current_profile(), Some(3));
+    }
+
+    #[test]
+    fn emits_key_on_every_edge_and_profile_on_announce() {
+        let (mut d, _, rx) = setup_ev(vec![]);
+        let code = encode_action(2, InputId(5));
+        d.on_edge(Edge::Down(code), Instant::now());
+        d.on_edge(Edge::Up(code), Instant::now());
+        d.on_edge(Edge::Down(0x0603), Instant::now());
+        assert_eq!(
+            next(&rx),
+            "{\"type\":\"key\",\"input\":\"K05\",\"down\":true,\"profile\":2}\n"
+        );
+        assert_eq!(
+            next(&rx),
+            "{\"type\":\"key\",\"input\":\"K05\",\"down\":false,\"profile\":2}\n"
+        );
+        assert_eq!(next(&rx), "{\"type\":\"profile\",\"profile\":3}\n");
+    }
+
+    fn actions(rx: &Receiver<String>, n: usize) -> Vec<String> {
+        let end = Instant::now() + Duration::from_secs(5);
+        let mut v = Vec::new();
+        while v.len() < n && Instant::now() < end {
+            if let Ok(l) = rx.recv_timeout(Duration::from_millis(50)) {
+                if l.contains("\"type\":\"action\"") {
+                    v.push(l);
+                }
+            }
+        }
+        v
+    }
+
+    #[test]
+    fn emits_action_result_with_kind_and_error() {
+        let (mut d, _, rx) = setup_ev(vec![(0, text("ok")), (1, text("fail: boom"))]);
+        d.on_edge(Edge::Down(encode_action(1, InputId(0))), Instant::now());
+        assert_eq!(
+            actions(&rx, 1),
+            ["{\"type\":\"action\",\"input\":\"K00\",\"trigger\":\"Press\",\"kind\":\"Text\",\"ok\":true,\"error\":null}\n"]
+        );
+        d.on_edge(Edge::Down(encode_action(1, InputId(1))), Instant::now());
+        assert_eq!(
+            actions(&rx, 1),
+            ["{\"type\":\"action\",\"input\":\"K01\",\"trigger\":\"Press\",\"kind\":\"Text\",\"ok\":false,\"error\":\"fail: boom\"}\n"]
+        );
+    }
+
+    #[test]
+    fn macro_emits_once_with_first_error_and_toggle_emits_resolved_kind() {
+        let mac = Action::Macro {
+            steps: vec![
+                Step::Do { action: text("a") },
+                Step::Do {
+                    action: text("fail1"),
+                },
+                Step::Do {
+                    action: text("fail2"),
+                },
+            ],
+        };
+        let t = Action::Toggle {
+            on: Box::new(Action::SoundMute),
+            off: Box::new(text("off")),
+        };
+        let (mut d, rec, rx) = setup_ev(vec![(0, mac), (1, t)]);
+        d.on_edge(Edge::Down(encode_action(1, InputId(0))), Instant::now());
+        let got = actions(&rx, 1);
+        assert!(rec.wait_len(3), "toutes les etapes s'executent");
+        assert_eq!(
+            got,
+            ["{\"type\":\"action\",\"input\":\"K00\",\"trigger\":\"Press\",\"kind\":\"Macro\",\"ok\":false,\"error\":\"fail1\"}\n"]
+        );
+        d.on_edge(Edge::Down(encode_action(1, InputId(1))), Instant::now());
+        assert!(actions(&rx, 1)[0].contains("\"kind\":\"SoundMute\",\"ok\":true"));
+        thread::sleep(Duration::from_millis(200));
+        assert!(
+            rx.try_iter().all(|l| !l.contains("action")),
+            "un seul evenement par action"
+        );
     }
 }

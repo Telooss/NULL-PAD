@@ -1,12 +1,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use arc_swap::ArcSwap;
-use engine::autostart::set_autostart;
+use engine::autostart::{migrate_autostart, set_autostart};
 use engine::config::{default_config, load, save_default_if_missing};
 use engine::dispatch::{Dispatcher, SystemExecutor};
 use engine::input_win::{run_raw_input, DeviceFilter};
-use engine::midi::Midi;
-use engine::obs::start_obs;
-use engine::paths::{config_path, APP_DIR};
+use engine::ipc::{
+    serve_control, serve_events, Events, Request, Response, CONTROL_PIPE, EVENTS_PIPE,
+};
+use engine::midi::{cc, Midi};
+use engine::obs::{start_obs, test_connection};
+use engine::paths::{config_path, migrate_app_dir, APP_DIR, OLD_APP_DIR};
 use engine::sim::run_simulation;
 use engine::sound::board::Soundboard;
 use engine::sound::devices::{cable_present, start_audio};
@@ -40,10 +43,10 @@ fn main() {
             }
         }
     }
-    let logs = dirs::config_dir()
-        .unwrap_or_default()
-        .join(APP_DIR)
-        .join("logs");
+    let base = dirs::config_dir().unwrap_or_default();
+    // Avant les logs : le dossier NULL-PAD est renomme avant d'y ecrire.
+    let migrated = migrate_app_dir(&base);
+    let logs = base.join(APP_DIR).join("logs");
     // Sans dossier de logs on continue sans fichier (la console reste en simulation).
     let file_log = RollingFileAppender::builder()
         .rotation(Rotation::DAILY)
@@ -67,9 +70,25 @@ fn main() {
         default_hook(info);
     }));
 
+    if let Err(e) = migrated {
+        tracing::error!("migration du dossier NULL-PAD impossible: {e}");
+        // Ne pas ecrire une config par defaut par-dessus une migration en attente.
+        let old = base.join(OLD_APP_DIR).join("config.json");
+        if path == config_path() && old.exists() && !path.exists() {
+            tracing::warn!(
+                "ancienne config utilisee pour cette session: {}",
+                old.display()
+            );
+            path = old;
+        }
+    }
+    if !simulate {
+        migrate_autostart();
+    }
+
     // Instance unique (pas en simulation). Le handle reste ouvert jusqu'a la fin du processus.
     let _single = (!simulate).then(|| {
-        let h = unsafe { CreateMutexW(None, false, w!(r"Local\nullpad-engine")) };
+        let h = unsafe { CreateMutexW(None, false, w!(r"Local\nullctl-engine")) };
         if h.is_ok() && unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
             tracing::info!("deja lance, arret");
             std::process::exit(0);
@@ -99,9 +118,35 @@ fn main() {
     obs.apply(&config.obs);
     midi.apply(&config.midi);
     let config = Arc::new(ArcSwap::from_pointee(config));
+    // Sans pipe le moteur tourne quand meme, simplement sans interface.
+    let events = serve_events(EVENTS_PIPE).unwrap_or_else(|e| {
+        tracing::warn!("pipe d'evenements indisponible: {e}");
+        Events::none()
+    });
+    {
+        let (config, events, midi) = (config.clone(), events.clone(), midi.clone());
+        let res = serve_control(CONTROL_PIPE, move |req| match req {
+            Request::Status => Response::ok(Some(serde_json::json!({
+                "profile": events.last_profile(),
+                "link": events.last_link(),
+                "version": env!("CARGO_PKG_VERSION"),
+            }))),
+            Request::TestObs => match test_connection(&config.load().obs) {
+                Ok(()) => Response::ok(None),
+                Err(e) => Response::err(e),
+            },
+            Request::TestMidi => match midi.send(&[cc(1, 20, 0)]) {
+                Ok(()) => Response::ok(None),
+                Err(e) => Response::err(e),
+            },
+        });
+        if let Err(e) = res {
+            tracing::warn!("pipe de controle indisponible: {e}");
+        }
+    }
     let (b, a, o, m) = (board.clone(), audio.clone(), obs.clone(), midi.clone());
     // Garde le watcher en vie jusqu'a la fin du programme.
-    let _watcher = watch_config(path.clone(), config.clone(), move |c| {
+    let _watcher = watch_config(path.clone(), config.clone(), events.clone(), move |c| {
         b.apply(&c.sound);
         a.apply(&c.sound);
         o.apply(&c.obs);
@@ -116,6 +161,7 @@ fn main() {
             obs,
             midi,
         }),
+        events,
     );
     if simulate {
         run_simulation(dispatcher);

@@ -67,7 +67,7 @@ impl Midi {
 
     fn open(&self) -> Result<MidiOutputConnection, String> {
         let wanted = self.port.load();
-        let out = MidiOutput::new("nullpad").map_err(|e| format!("MIDI : {e}"))?;
+        let out = MidiOutput::new("nullctl").map_err(|e| format!("MIDI : {e}"))?;
         let ports = out.ports();
         let names: Vec<String> = ports
             .iter()
@@ -75,7 +75,7 @@ impl Midi {
             .collect();
         let i = pick_port(&names, &wanted)
             .ok_or_else(|| format!("port MIDI \"{wanted}\" introuvable (loopMIDI lancé ?)"))?;
-        out.connect(&ports[i], "nullpad")
+        out.connect(&ports[i], "nullctl")
             .map_err(|e| format!("ouverture du port MIDI \"{}\" : {e}", names[i]))
     }
 }

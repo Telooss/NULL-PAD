@@ -4,6 +4,7 @@ pub mod codes;
 pub mod config;
 pub mod dispatch;
 pub mod input_win;
+pub mod ipc;
 pub mod midi;
 pub mod obs;
 pub mod paths;

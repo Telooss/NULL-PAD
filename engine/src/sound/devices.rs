@@ -93,6 +93,11 @@ pub fn cable_present() -> bool {
     find(&cpal::default_host(), false, None, Some(CABLE_HINT), "VB-Cable", false).is_some()
 }
 
+/// Noms des sorties audio, pour la liste de l'interface.
+pub fn output_names() -> Vec<String> {
+    cpal::default_host().output_devices().map(|d| d.map(|d| dev_name(&d)).collect()).unwrap_or_default()
+}
+
 fn run(board: Arc<Soundboard>, rx: Receiver<AudioCmd>, tx: Sender<AudioCmd>) {
     let mut cur: Option<SoundSettings> = None;
     let mut dev = Opened::default();

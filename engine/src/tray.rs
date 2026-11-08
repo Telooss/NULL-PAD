@@ -23,11 +23,12 @@ fn icon() -> Icon {
 /// A creer sur le thread qui pompe les messages Windows ; garder la valeur en vie.
 pub fn create_tray(cable_missing: bool) -> Result<TrayIcon, String> {
     let open = MenuItem::new("Ouvrir le dossier de config", true, None);
+    let ui = MenuItem::new("Ouvrir nullctl", true, None);
     let auto = CheckMenuItem::new("Démarrer avec Windows", true, is_autostart(), None);
     let quit = MenuItem::new("Quitter", true, None);
     let cable = MenuItem::new("VB-Cable absent : l'installer…", true, None);
     let menu = Menu::new();
-    menu.append_items(&[&open, &auto])
+    menu.append_items(&[&ui, &open, &auto])
         .map_err(|e| e.to_string())?;
     if cable_missing {
         menu.append(&cable).map_err(|e| e.to_string())?;
@@ -35,6 +36,7 @@ pub fn create_tray(cable_missing: bool) -> Result<TrayIcon, String> {
     menu.append(&quit).map_err(|e| e.to_string())?;
     let cable_id = cable.id().clone();
     let (open_id, auto_id, quit_id) = (open.id().clone(), auto.id().clone(), quit.id().clone());
+    let ui_id = ui.id().clone();
     MenuEvent::set_event_handler(Some(move |e: MenuEvent| {
         if e.id == quit_id {
             tracing::info!("arret demande depuis l'icone");
@@ -45,6 +47,18 @@ pub fn create_tray(cable_missing: bool) -> Result<TrayIcon, String> {
                 if let Err(err) = launch::open(&dir.to_string_lossy()) {
                     tracing::error!("ouverture du dossier impossible: {err}");
                 }
+            }
+        } else if e.id == ui_id {
+            let exe = std::env::current_exe()
+                .ok()
+                .and_then(|p| p.parent().map(|d| d.join("nullctl.exe")));
+            match exe {
+                Some(exe) if exe.exists() => {
+                    if let Err(err) = launch::launch(&exe.to_string_lossy(), &[]) {
+                        tracing::error!("lancement de nullctl impossible: {err}");
+                    }
+                }
+                _ => tracing::warn!("nullctl.exe introuvable a cote du moteur"),
             }
         } else if e.id == cable_id {
             if let Err(err) = launch::open("https://vb-audio.com/Cable/") {
@@ -59,7 +73,7 @@ pub fn create_tray(cable_missing: bool) -> Result<TrayIcon, String> {
     }));
     TrayIconBuilder::new()
         .with_menu(Box::new(menu))
-        .with_tooltip("NULL/PAD")
+        .with_tooltip("NULL/CONTROL")
         .with_icon(icon())
         .build()
         .map_err(|e| e.to_string())

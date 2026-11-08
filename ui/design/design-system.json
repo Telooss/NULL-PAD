@@ -1,0 +1,24 @@
+{
+  "v": 3,
+  "assetGroups": {
+    "Modele": { "name": "Modele", "tile": "m", "order": [], "files": {} },
+    "Rendus": {
+      "files": {
+        "pad.png": { "blob": "87763a5afdcc16dd6ac5cfcc1e1dba45", "name": "pad.png", "size": 234479, "type": "image/png" }
+      },
+      "name": "Rendus",
+      "order": ["pad.png"],
+      "tile": "l"
+    }
+  },
+  "blobs": {},
+  "createdOnFiles": { "at": "2026-11-05T10:45:00Z", "v": 1 },
+  "docs": { "readme": "project/README.md", "sections": [] },
+  "groups": ["Modele", "Rendus"],
+  "lastChange": { "at": "2026-11-05T11:20:00Z", "by": "Alan", "note": "Pad en 3D en direct : plus de trous dans la coque, légendes et écran posés sur les surfaces.", "via": "Claude Code" },
+  "layout": "files",
+  "libraries": [],
+  "namespace": "NullCtl",
+  "sections": {},
+  "title": "nullctl"
+}

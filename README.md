@@ -1,6 +1,6 @@
 # NULL/PAD
 
-Logiciel Windows du **NULL/PAD**, un macropad fait maison : 23 touches, 2 molettes cliquables, écran nice!view, firmware ZMK, en USB ou Bluetooth.
+**NULL/CONTROL** (`nullctl`) est le logiciel Windows du **NULL/PAD**, un macropad fait maison : 23 touches, 2 molettes cliquables, écran nice!view, firmware ZMK, en USB ou Bluetooth.
 
 Le but : tout ce que fait un Stream Deck ou Logitech G HUB, molettes comprises, avec **la latence la plus basse possible** entre l'appui et l'action. Le tout sans dépendre du logiciel pour les touches de base : le pavé numérique marche même logiciel fermé.
 
@@ -24,26 +24,27 @@ Un **profil** = une couche du firmware. Dans chaque profil, une touche est soit 
 | OBS (websocket) et Ableton (MIDI virtuel) | ✅ fait, à valider sur le vrai pad |
 | Firmware ZMK (profils, codes action, tag sur l'écran) | ✅ compile (local, WSL), à valider sur le vrai pad |
 | Écriture dans le pad depuis l'appli (ZMK Studio RPC) | à venir |
-| Interface (rendu 3D du pad, esthétique terminal hacktiviste Y2K, violet) | à venir |
+| Interface NULL/CONTROL (rendu 3D du pad, esthétique terminal hacktiviste Y2K, violet) | ✅ faite, à valider sur le vrai pad |
 
 ## Compiler et lancer
 
 Prérequis : Windows 11, [Rust](https://rustup.rs) stable.
 
 ```powershell
-cargo build --release          # produit target\release\nullpad.exe
-cargo run -p engine --release  # lance le moteur (icône dans la zone de notification)
-cargo test
+cargo build --release --workspace  # target\release\nullctl.exe (interface) et nullctl-engine.exe (moteur)
+cargo run -p engine --release      # lance le moteur (icône dans la zone de notification)
+cargo test --workspace
 ```
 
-Sans le pad, `--simulate` remplace le macropad par des lignes tapées au clavier. Détails, format de la config et liste des actions : [engine/README.md](engine/README.md).
+Sans le pad, `--simulate` remplace le macropad par des lignes tapées au clavier. L'interface (`ui/`) : [ui/README.md](ui/README.md). Moteur : détails, format de la config et liste des actions : [engine/README.md](engine/README.md).
 
-Config et journaux : `%APPDATA%\NULL-PAD\`.
+Config et journaux : `%APPDATA%\nullctl\`.
 
 ## Organisation
 
 ```
 engine/                         moteur Rust (arrière-plan, Raw Input, actions)
+ui/                             interface NULL/CONTROL (Tauri + page web, rendu 3D du pad)
 firmware/                       firmware ZMK du pad (config, shield, build local, README)
 docs/superpowers/specs/         conception du logiciel (intention, architecture, direction artistique)
 docs/superpowers/plans/         plans d'implémentation et suivi
@@ -53,4 +54,5 @@ docs/superpowers/plans/         plans d'implémentation et suivi
 
 - [Conception du logiciel](docs/superpowers/specs/2026-11-05-logiciel-macropad-design.md)
 - [Plan du moteur](docs/superpowers/plans/2026-11-05-moteur.md) et [points de suivi](docs/superpowers/plans/2026-11-05-moteur-suivi.md)
+- [Conception de l'interface](docs/superpowers/specs/2026-11-07-interface-design.md) et [son README](ui/README.md)
 - [Moteur : usage, config, codes HID](engine/README.md)

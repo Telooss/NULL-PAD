@@ -1,0 +1,76 @@
+<!-- @dsCard group="Écrans" width=1440 height=900 subtitle="Profil DEFAULT, touche 7 sélectionnée. Clique une touche, une molette ou un profil." -->
+<!doctype html>
+<html><head><meta charset="utf-8">
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.344.0/dist/umd/lucide.min.js"></script>
+<style>body{margin:0;background:#08070a;overflow:hidden}</style>
+</head><body>
+<div class="nc-app" id="app">
+  <div id="shell" style="display:contents"></div>
+  <main class="nc-main" id="main">
+    <section class="nc-stage" id="stage">
+      <div class="nc-w98" style="left:40px;bottom:250px;transform:rotate(-2.5deg)">
+        <div class="bar">SYSTEM.INI<i>×</i></div>
+        <div class="body"><span>Chargement du profil DEFAULT…</span><div class="prog"><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b></div></div>
+      </div>
+      <i class="nc-tape" style="left:118px;bottom:318px;transform:rotate(-8deg)"></i>
+      <div class="nc-w98" style="left:64px;bottom:120px;width:220px;transform:rotate(1.8deg)">
+        <div class="bar">NULL/PAD<i>×</i></div>
+        <div class="body"><span>Couche 1 active. 23 touches, 2 molettes.</span><span class="ok">OK</span></div>
+      </div>
+      <i class="nc-tape" style="left:236px;bottom:196px;transform:rotate(14deg);width:56px"></i>
+    </section>
+    <aside class="nc-panel" id="panel">
+      <div class="nc-panel-head">
+        <div><div class="nc-label">Touche</div><div class="nc-keyname" id="kname">7</div></div>
+        <div><div class="ui-small" style="color:var(--ink-muted)" id="kplace">Rangée 2 · colonne 1</div></div>
+        <div class="nc-minimap" id="mini"></div>
+      </div>
+      <div class="nc-tabs"><button class="is-on">Appui court</button><button>Appui long</button><button>Double</button><button>Bascule</button></div>
+      <div class="nc-section">
+        <span class="nc-label">Action actuelle</span>
+        <div class="nc-current"><span class="ic"><i data-lucide="keyboard"></i></span>
+          <span class="tx"><b id="kcur">Touche native · 7</b><span>Envoyée par le pad, marche sans nullctl</span></span></div>
+      </div>
+      <div class="nc-section" style="padding-bottom:6px"><span class="nc-label">Changer d'action</span></div>
+      <div class="nc-actions">
+        <button class="nc-action"><span class="ic"><i data-lucide="command"></i></span><span class="tx"><b>Raccourci clavier</b><span>Combinaison, touche média</span></span></button>
+        <button class="nc-action"><span class="ic"><i data-lucide="type"></i></span><span class="tx"><b>Texte</b><span>Tape un texte d'un coup</span></span></button>
+        <button class="nc-action"><span class="ic"><i data-lucide="list-ordered"></i></span><span class="tx"><b>Macro</b><span>Suite d'actions avec délais</span></span></button>
+        <button class="nc-action"><span class="ic"><i data-lucide="rocket"></i></span><span class="tx"><b>Lancer</b><span>Appli, fichier ou URL</span></span></button>
+        <button class="nc-action"><span class="ic"><i data-lucide="terminal"></i></span><span class="tx"><b>Commande</b><span>PowerShell, .bat, programme</span></span></button>
+        <button class="nc-action"><span class="ic"><i data-lucide="volume-2"></i></span><span class="tx"><b>Son</b><span>Soundboard, joué dans le micro</span></span></button>
+        <button class="nc-action"><span class="ic"><i data-lucide="video"></i></span><span class="tx"><b>OBS</b><span>Scène, source, stream, replay</span></span></button>
+        <button class="nc-action"><span class="ic"><i data-lucide="sliders-horizontal"></i></span><span class="tx"><b>Volume et micro</b><span>Volume Windows, couper le micro</span></span></button>
+        <button class="nc-action"><span class="ic"><i data-lucide="music"></i></span><span class="tx"><b>MIDI</b><span>Note ou CC vers Ableton</span></span></button>
+        <button class="nc-action"><span class="ic"><i data-lucide="layers"></i></span><span class="tx"><b>Profil</b><span>Aller à un profil, suivant, précédent</span></span></button>
+      </div>
+    </aside>
+  </main>
+</div>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/+esm';
+const N = window.NullCtl;
+const [geo] = await Promise.all([fetch('../../assets/Modele/nullpad.json').then(r => r.json()), N.fontsReady()]);
+const app = document.getElementById('app'), stage = document.getElementById('stage'), main = document.getElementById('main');
+document.getElementById('shell').outerHTML = N.shell({ profiles: [{ name: 'Default', tag: 'DEF' }, null, null], active: 0 });
+stage.insertAdjacentHTML('beforeend', N.frame('0x4E50 // NODE 01 // NULL/PAD // ZMK', 'NP-01-DFLT-0001'));
+const KNOBS = { D1: ['Molette gauche', 'Volume général · clic : muet'], D2: ['Molette droite', 'Niveau du micro · clic : muet'] };
+function mini(F) {
+  const n = /^F/.test(F) ? +F.slice(1) : 0; let h = '';
+  for (let i = 1; i <= 20; i++) h += '<i class="' + (i === n ? 'sel' : i === 20 ? 'v' : '') + '"></i>';
+  h += '<span class="mrow">' + [21, 22, 23].map(i => '<i class="' + (i === n ? 'sel' : 'v') + '"></i>').join('') + '</span>';
+  document.getElementById('mini').innerHTML = h;
+}
+const pad = N.pad3d(THREE, geo, stage, { sel: 'F5', fill: 0.9, cx: 0.5, callouts: KNOBS, onPick: pick });
+function pick(k) {
+  pad.select(k); N.select(stage, k);
+  const knob = KNOBS[k], leg = N.NUMPAD[+k.slice(1) - 1];
+  document.getElementById('kname').textContent = knob ? (k === 'D1' ? 'Mol. G' : 'Mol. D') : (leg || 'Libre');
+  document.getElementById('kplace').textContent = knob ? knob[1] : N.place(k);
+  document.getElementById('kcur').textContent = knob ? knob[1].split(' · ')[0] : leg ? 'Touche native · ' + leg : 'Aucune action';
+  mini(k); N.wire(main);
+}
+N.icons(); mini('F5'); N.wire(main);
+document.querySelectorAll('.nc-slot').forEach(s => s.addEventListener('click', () => N.glitch(app)));
+</script>
+</body></html>

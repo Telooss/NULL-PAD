@@ -1,0 +1,66 @@
+<!-- @dsCard group="Écrans" width=1440 height=900 subtitle="Profil STREAM, touche 8 réglée sur un son de la soundboard." -->
+<!doctype html>
+<html><head><meta charset="utf-8">
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.344.0/dist/umd/lucide.min.js"></script>
+<style>body{margin:0;background:#08070a;overflow:hidden}</style>
+</head><body>
+<div class="nc-app" id="app">
+  <div id="shell" style="display:contents"></div>
+  <main class="nc-main" id="main">
+    <section class="nc-stage" id="stage"></section>
+    <aside class="nc-panel">
+      <div class="nc-panel-head">
+        <div><div class="nc-label">Touche</div><div class="nc-keyname">8</div></div>
+        <div class="ui-small" style="color:var(--ink-muted)">Rangée 2 · colonne 2</div>
+        <div class="nc-minimap" id="mini"></div>
+      </div>
+      <div class="nc-tabs"><button class="is-on">Appui court</button><button>Appui long</button><button>Double</button><button>Bascule</button></div>
+      <div class="nc-section">
+        <div class="nc-current"><span class="ic"><i data-lucide="volume-2"></i></span>
+          <span class="tx"><b>Son</b><span>Soundboard · casque + micro</span></span>
+          <button class="nc-btn">Changer</button></div>
+      </div>
+      <div class="nc-section" style="gap:16px;padding-top:18px">
+        <div class="nc-field"><span class="nc-label">Fichier</span>
+          <div class="nc-file"><i data-lucide="file-audio" style="color:var(--violet-400)"></i>
+            <span class="tx"><b>airhorn.wav</b><span>1,8 s · en mémoire, part sans délai</span></span>
+            <button class="nc-play" title="Écouter"><i data-lucide="play" style="width:16px;height:16px"></i></button></div>
+          <div class="nc-wave" id="wave"></div>
+        </div>
+        <div class="nc-field"><span class="nc-label">Volume du son</span>
+          <div class="nc-slider"><div class="track"><div class="fill" style="width:80%"></div><div class="knob" style="left:80%"></div></div><output>80 %</output></div>
+        </div>
+        <div class="nc-field"><span class="nc-label">Sortie</span>
+          <div class="nc-check is-on"><span class="box"><i data-lucide="check"></i></span><span class="tx">Casque<span>Pour t'entendre</span></span></div>
+          <div class="nc-check is-on"><span class="box"><i data-lucide="check"></i></span><span class="tx">Micro virtuel · VB-Cable<span>Le jeu, Discord ou OBS l'entendent</span></span></div>
+        </div>
+        <div class="nc-field"><span class="nc-label">Si on rappuie pendant le son</span>
+          <div class="nc-seg"><button class="is-on">Relancer</button><button>Couper</button></div>
+        </div>
+        <div class="nc-note"><i data-lucide="info"></i><span>Dans Discord ou OBS, choisis <b>CABLE Output</b> comme micro. Ton vrai micro y passe déjà (mode « externe »).</span></div>
+      </div>
+      <div class="nc-panel-foot"><button class="nc-btn"><i data-lucide="trash-2"></i>Retirer l'action</button></div>
+    </aside>
+  </main>
+</div>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/+esm';
+const N = window.NullCtl;
+const [geo] = await Promise.all([fetch('../../assets/Modele/nullpad.json').then(r => r.json()), N.fontsReady()]);
+const stage = document.getElementById('stage'), main = document.getElementById('main');
+document.getElementById('shell').outerHTML = N.shell({ profiles: [{ name: 'Default', tag: 'DEF' }, { name: 'Stream', tag: 'STR' }, null], active: 1 });
+stage.insertAdjacentHTML('beforeend', N.frame('0x4E50 // NODE 01 // COUCHE 2 // STR', 'NP-01-STRM-0002'));
+// Profil STREAM : soundboard + OBS sur la grille.
+const L = ['Scène 1', 'Scène 2', 'Scène 3', 'Live', 'Clap', 'Horn', 'Rire', 'Replay', 'Bruh', 'Wow', 'Boo', '', 'Muet', 'Cam', 'Chat', 'Stop', '', '', '', '', 'DEF', 'STR', ''];
+let mini = '';
+for (let i = 1; i <= 20; i++) mini += '<i class="' + (i === 6 ? 'sel' : i === 20 ? 'v' : '') + '"></i>';
+document.getElementById('mini').innerHTML = mini + '<span class="mrow"><i class="v"></i><i class="v"></i><i class="v"></i></span>';
+let w = '', h = 7;
+for (let j = 0; j < 46; j++) { h = (h * 9301 + 49297) % 233280; const v = j < 4 ? 0.3 + j * 0.2 : Math.max(0.12, (1 - j / 46) * (0.45 + 0.55 * h / 233280)); w += '<i class="' + (j < 14 ? 'p' : '') + '" style="height:' + Math.round(v * 100) + '%"></i>'; }
+document.getElementById('wave').innerHTML = w;
+const pad = N.pad3d(THREE, geo, stage, { sel: 'F6', fill: 0.9, cx: 0.5, legends: L, lcd: { top: 'USB', tag: 'STR', bottom: 'P2' },
+  callouts: { D1: ['Molette gauche', 'Volume général'], D2: ['Molette droite', 'Niveau du micro'] },
+  onPick: k => { pad.select(k); N.select(stage, k); N.wire(main); } });
+N.icons(); N.wire(main);
+</script>
+</body></html>

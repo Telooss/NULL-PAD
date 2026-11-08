@@ -208,6 +208,11 @@ fn connect(s: &ObsSettings) -> Result<Ws, String> {
     Ok(ws)
 }
 
+/// Bouton « Tester » : connexion + Hello/Identify, aucune requete. Chaque etape dure 2 s au plus.
+pub fn test_connection(s: &ObsSettings) -> Result<(), String> {
+    connect(s).map(|_| ())
+}
+
 /// Envoie la requete et attend sa RequestResponse (op 7) ; `result == false` -> warn.
 fn request(ws: &mut Ws, req: &Value, id: &str) -> Result<(), String> {
     ws.send(Message::text(req.to_string()))
@@ -485,6 +490,18 @@ mod tests {
             rx.try_recv().is_err(),
             "les actions en file ne sont pas rejouees"
         );
+    }
+
+    #[test]
+    fn test_connection_succeeds_then_fails_on_closed_port() {
+        let (l, port) = bind();
+        let (tx, _rx) = mpsc::channel();
+        let srv = fake_obs(l, None, 1, 0, tx);
+        assert_eq!(test_connection(&settings(port, None)), Ok(()));
+        srv.join().unwrap();
+        let (dead, dead_port) = bind();
+        drop(dead);
+        assert!(test_connection(&settings(dead_port, None)).is_err());
     }
 
     #[test]
