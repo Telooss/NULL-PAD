@@ -3,7 +3,6 @@ pub mod native;
 pub mod pipes;
 pub mod settings;
 pub mod store;
-#[allow(dead_code)] // restes inutilisés : Client::notifications, StudioError::Decode, hid::with_mods
 pub(crate) mod studio;
 
 use engine::config::{default_config, Config};

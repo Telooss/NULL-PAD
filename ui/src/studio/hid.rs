@@ -124,6 +124,7 @@ pub fn catalog() -> Vec<KeyChoice> {
 }
 
 /// Ajoute les modificateurs implicites (côté gauche) à un usage.
+#[allow(dead_code)] // réservé au sélecteur de modificateurs
 pub fn with_mods(usage: u32, ctrl: bool, shift: bool, alt: bool, win: bool) -> u32 {
     let m = u32::from(ctrl) | u32::from(shift) << 1 | u32::from(alt) << 2 | u32::from(win) << 3;
     usage | m << 24

@@ -152,9 +152,17 @@ pub fn write<P: Port>(
         let _ = c.discard();
         return Err(err(e));
     }
-    let r = snapshot(c)?;
-    store(cache_path, &serial, &r);
-    Ok(r)
+    // Enregistré : une relecture qui échoue ne doit pas passer pour une écriture ratée.
+    match snapshot(c) {
+        Ok(r) => {
+            store(cache_path, &serial, &r);
+            Ok(r)
+        }
+        Err(_) => Ok(PadRead {
+            model: target.clone(),
+            max_name_len: km.max_layer_name_length as usize,
+        }),
+    }
 }
 
 enum Op {
@@ -183,10 +191,23 @@ mod tests {
 
     const W: Duration = Duration::from_secs(5);
 
-    fn tmp(tag: &str) -> std::path::PathBuf {
+    /// Chemin du cache dans un dossier temporaire supprimé à la fin du test.
+    struct Tmp(std::path::PathBuf);
+    impl std::ops::Deref for Tmp {
+        type Target = std::path::Path;
+        fn deref(&self) -> &Path {
+            &self.0
+        }
+    }
+    impl Drop for Tmp {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(self.0.parent().unwrap());
+        }
+    }
+    fn tmp(tag: &str) -> Tmp {
         let d = std::env::temp_dir().join(format!("nullctl-svc-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
-        d.join("pad-cache.json")
+        Tmp(d.join("pad-cache.json"))
     }
 
     fn client(f: FakePad) -> Client<FakePad> {
@@ -221,7 +242,6 @@ mod tests {
         let cached = cache::load(&p, Some("deadbeef")).unwrap();
         assert_eq!(cached.model, r.model);
         assert!(cache::load(&p, Some("00")).is_none());
-        let _ = std::fs::remove_dir_all(p.parent().unwrap());
     }
 
     #[test]
@@ -276,7 +296,6 @@ mod tests {
         assert_eq!(cache::load(&p, None).unwrap().model, t);
         let pad = c.port_mut();
         assert!(!pad.unsaved);
-        pad.keymap = pad.keymap.clone(); // état courant == état gelé
         let m = model::decode(
             &pad.keymap,
             &crate::studio::fake::behavior_names()
@@ -285,7 +304,6 @@ mod tests {
                 .collect(),
         );
         assert_eq!(m, t);
-        let _ = std::fs::remove_dir_all(p.parent().unwrap());
     }
 
     #[test]
@@ -305,7 +323,7 @@ mod tests {
     }
 
     /// Fait échouer l'écriture suivante dès que le pad a des changements non enregistrés (une fois).
-    struct Flaky(FakePad, bool);
+    struct Flaky(FakePad, bool, bool, bool);
     impl Read for Flaky {
         fn read(&mut self, b: &mut [u8]) -> std::io::Result<usize> {
             self.0.read(b)
@@ -317,7 +335,14 @@ mod tests {
                 self.1 = false;
                 return Err(std::io::ErrorKind::BrokenPipe.into());
             }
-            self.0.write(b)
+            if self.3 {
+                return Err(std::io::ErrorKind::BrokenPipe.into());
+            }
+            let was_unsaved = self.0.unsaved;
+            let n = self.0.write(b)?;
+            // Câble arraché juste après `save` : tout le reste échoue.
+            self.3 = self.2 && was_unsaved && !self.0.unsaved;
+            Ok(n)
         }
         fn flush(&mut self) -> std::io::Result<()> {
             self.0.flush()
@@ -326,7 +351,7 @@ mod tests {
 
     #[test]
     fn failure_mid_write_discards() {
-        let mut c = Client::new(Flaky(FakePad::new(), true));
+        let mut c = Client::new(Flaky(FakePad::new(), true, false, false));
         let p = tmp("mid");
         let r = read(&mut c, &p, W, &AtomicBool::new(false), || {}).unwrap();
         let before = c.port_mut().0.keymap.clone();
@@ -347,6 +372,23 @@ mod tests {
     }
 
     #[test]
+    fn failed_reread_after_save_is_still_ok() {
+        let mut c = Client::new(Flaky(FakePad::new(), false, true, false));
+        let p = tmp("reread");
+        let r = read(&mut c, &p, W, &AtomicBool::new(false), || {}).unwrap();
+        let mut t = r.model.clone();
+        t.layers[0].bindings[4] = PadBinding::Action {
+            profile: 1,
+            input: 4,
+        };
+        let out = write(&mut c, &p, &r.model, &t, W, &AtomicBool::new(false), || {}).unwrap();
+        assert_eq!(out.model, t);
+        assert_eq!(out.max_name_len, r.max_name_len);
+        assert_eq!(cache::load(&p, None).unwrap().model, r.model); // cache non mis à jour
+        assert!(!c.port_mut().0.unsaved);
+    }
+
+    #[test]
     fn cache_ignores_other_serial_and_corrupt_file() {
         let p = tmp("cache");
         let model = PadModel { layers: vec![] };
@@ -360,9 +402,8 @@ mod tests {
         assert_eq!(cache::load(&p, Some("aa")), Some(c.clone()));
         assert_eq!(cache::load(&p, None), Some(c));
         assert!(cache::load(&p, Some("bb")).is_none());
-        std::fs::write(&p, "{pas du json").unwrap();
+        std::fs::write(&*p, "{pas du json").unwrap();
         assert!(cache::load(&p, None).is_none());
         assert!(cache::load(&p.with_file_name("absent.json"), None).is_none());
-        let _ = std::fs::remove_dir_all(p.parent().unwrap());
     }
 }

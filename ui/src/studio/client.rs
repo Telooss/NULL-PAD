@@ -18,6 +18,7 @@ pub enum StudioError {
     Disconnected,
     Cancelled,
     Rejected(String),
+    #[allow(dead_code)] // pas encore produit
     Decode(String),
 }
 
@@ -79,6 +80,7 @@ impl<P: Port> Client<P> {
     }
 
     /// Notifications reçues pendant les appels, vidées à la lecture.
+    #[allow(dead_code)] // réservé aux notifications d'interface
     pub fn notifications(&mut self) -> Vec<studio::Notification> {
         self.queue.drain(..).collect()
     }
