@@ -53,6 +53,13 @@ fn with_client<T>(
 ) -> Result<T, String> {
     let _guard = try_lock(state).ok_or("busy: Pad occupé")?;
     state.cancel.store(false, Ordering::Relaxed);
+    run_on_port(f)
+}
+
+/// Ouvre le port et exécute `f`, SANS toucher au verrou : l'appelant le tient déjà.
+fn run_on_port<T>(
+    f: impl FnOnce(&mut Client<Box<dyn Port>>) -> Result<T, String>,
+) -> Result<T, String> {
     let name = find_pad_port().ok_or("absent: Pad non branché")?;
     let port =
         open_pad(&name).map_err(|e| format!("disconnected: Impossible d'ouvrir le pad : {e}"))?;
@@ -69,15 +76,13 @@ fn notify(app: &AppHandle) -> impl FnOnce() + '_ {
 #[tauri::command(async)]
 pub fn pad_status(state: State<PadState>) -> PadStatus {
     status_with(&state, || {
-        with_client(&state, |c| Ok(service::status(c)))
-            .ok()
-            .flatten()
+        run_on_port(|c| Ok(service::status(c))).ok().flatten()
     })
 }
 
-/// `probe` n'est appelé que si le port est libre.
+/// Prend le verrou une seule fois et le garde pendant `probe` (qui ne doit pas le reprendre) ; occupé : pas de sonde.
 fn status_with(state: &PadState, probe: impl FnOnce() -> Option<(bool, String)>) -> PadStatus {
-    if try_lock(state).is_none() {
+    let Some(_guard) = try_lock(state) else {
         return PadStatus {
             present: true,
             locked: None,
@@ -85,7 +90,7 @@ fn status_with(state: &PadState, probe: impl FnOnce() -> Option<(bool, String)>)
             cache_at: None,
             busy: true,
         };
-    }
+    };
     let probe = probe();
     let cache_at = probe
         .as_ref()
@@ -126,9 +131,7 @@ pub fn pad_cancel_unlock(state: State<PadState>) {
 #[tauri::command(async)]
 pub fn pad_cached(state: State<PadState>) -> Option<PadRead> {
     cached_with(&state, &cache::path(), || {
-        with_client(&state, |c| Ok(service::status(c)))
-            .ok()
-            .flatten()
+        run_on_port(|c| Ok(service::status(c))).ok().flatten()
     })
 }
 
@@ -213,6 +216,34 @@ mod tests {
         let s = status_with(&state, || Some((true, "aa".into())));
         assert!(s.present && !s.busy && s.locked == Some(true));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Régression : le verrou est tenu pendant la sonde (une sonde qui le reprendrait verrait WouldBlock
+    /// et perdrait le numéro de série) ; la sonde réelle (`run_on_port`) ne le touche pas.
+    #[test]
+    fn lock_is_held_once_during_the_probe() {
+        let state = PadState::default();
+        let held = |state: &PadState| {
+            assert!(
+                matches!(state.busy.try_lock(), Err(TryLockError::WouldBlock)),
+                "verrou non tenu pendant la sonde"
+            )
+        };
+        let s = status_with(&state, || {
+            held(&state);
+            Some((false, "aa".into()))
+        });
+        assert!(s.present && !s.busy && s.serial.as_deref() == Some("aa"));
+        let path = std::env::temp_dir().join("nullctl-cmd-absent-xyz.json");
+        let probed = std::cell::Cell::new(false);
+        assert!(cached_with(&state, &path, || {
+            held(&state);
+            probed.set(true);
+            None
+        })
+        .is_none());
+        assert!(probed.get());
+        assert!(try_lock(&state).is_some()); // libéré ensuite
     }
 
     #[test]
