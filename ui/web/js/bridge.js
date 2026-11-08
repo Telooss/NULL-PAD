@@ -19,7 +19,7 @@ const sample = () => ({
     ] },
   ],
   sound: { master_volume: 100, monitor_device: null, monitor_volume: 100, cable_device: null, cable_volume: 100, mic_mode: 'External', mic_device: null, mic_gain: 100,
-    sounds: [{ id: 'airhorn', path: 'C:\Sons\airhorn.wav', volume: 100, on_repeat: 'Restart' }, { id: 'clap', path: 'C:\Sons\clap.mp3', volume: 80, on_repeat: 'Stop' }] },
+    sounds: [{ id: 'airhorn', path: 'C:\\Sons\\airhorn.wav', volume: 100, on_repeat: 'Restart' }, { id: 'clap', path: 'C:\\Sons\\clap.mp3', volume: 80, on_repeat: 'Stop' }] },
   obs: { host: '127.0.0.1', port: 4455, password: null },
   midi: { port: 'NULL-PAD' },
 });
