@@ -36,3 +36,16 @@ test('catalog', () => {
   assert.ok(ACTIONS.every((a) => a.type && a.label && a.desc && a.icon));
   assert.deepEqual(TRIGGERS, ['Press', 'Hold', 'DoubleTap']);
 });
+test('more fallbacks', () => {
+  const t = (a) => legendFor(b(a), {}, []).text;
+  assert.equal(t({ type: 'Toggle', on: { type: 'Sound', id: 'x' }, off: { type: 'StopSounds' } }), 'X');
+  assert.equal(t({ type: 'Open', target: 'C:\\docs\\' }), 'docs');
+  assert.equal(t({ type: 'Open', target: 'https://a.b/' }), 'a.b');
+  assert.equal(t({ type: 'Launch', program: 'C:\\Apps\\' }), 'Apps');
+  assert.equal(t({ type: 'Command', line: 'x' }), 'CMD');
+  assert.equal(t({ type: 'Text', text: 'bonjour' }), 'BONJOUR');
+  assert.equal(t({ type: 'Media', key: 'PlayPause' }), 'PLAY');
+  assert.equal(t({ type: 'MicVolume', delta: -1 }), 'MIC−');
+  assert.equal(t({ type: 'SoundVolume', delta: 1 }), 'SON+');
+  assert.equal(t({ type: 'SoundVolume', delta: -1 }), 'SON−');
+});

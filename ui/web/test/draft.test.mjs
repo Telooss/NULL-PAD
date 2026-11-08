@@ -49,3 +49,15 @@ test('canBind', () => {
   assert.equal(canBind(1, 'K01', natives), true);
   assert.equal(canBind(1, 'ENC_R_CW', natives), true);
 });
+test('addSound lands in merged sound.sounds and is dirty', () => {
+  const c = cfg(); c.sound.sounds = [{ id: 'a' }]; const orig = structuredClone(c);
+  const d = createDraft(c, 2);
+  d.addSound({ id: 'a' });
+  assert.equal(d.dirty(), false);
+  d.addSound({ id: 'b', path: 'x', volume: 100, on_repeat: 'Restart' });
+  assert.equal(d.dirty(), true);
+  const m = d.merged();
+  assert.deepEqual(m.sound.sounds.map((s) => s.id), ['a', 'b']);
+  assert.deepEqual({ o: m.obs, i: m.midi, p0: m.profiles[0] }, { o: orig.obs, i: orig.midi, p0: orig.profiles[0] });
+  assert.deepEqual(c, orig);
+});

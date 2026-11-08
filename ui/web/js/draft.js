@@ -7,14 +7,15 @@ export function canBind(profileId, input, natives = {}) {
 // JSON a cles triees : comparaison independante de l'ordre des cles et des liaisons.
 const canon = (v) => JSON.stringify(v, (_, x) => (x && typeof x === 'object' && !Array.isArray(x)
   ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, x[k]])) : x));
-const norm = (p) => canon({ name: p.name, tag: p.tag,
-  bindings: [...p.bindings].sort((a, b) => (a.input + a.trigger).localeCompare(b.input + b.trigger)) });
+const norm = (p, sounds = []) => canon({ name: p.name, tag: p.tag,
+  sounds, bindings: [...p.bindings].sort((a, b) => (a.input + a.trigger).localeCompare(b.input + b.trigger)) });
 
 export function createDraft(config, profileId) {
   const base = structuredClone(config);
   const idx = base.profiles.findIndex((p) => p.id === profileId);
   if (idx < 0) throw new Error(`profil ${profileId} inconnu`);
   const start = norm(base.profiles[idx]);
+  const added = [];
   const cur = structuredClone(base.profiles[idx]);
   return {
     get: () => cur,
@@ -25,11 +26,16 @@ export function createDraft(config, profileId) {
       const nb = binding.action ? { ...binding, input, trigger } : { input, trigger, action: binding };
       if (i >= 0) cur.bindings[i] = nb; else cur.bindings.push(nb);
     },
+    // SoundDef issu d'un depot de fichier ; ignore si l'id existe deja.
+    addSound(def) {
+      if (![...(base.sound?.sounds ?? []), ...added].some((s) => s.id === def.id)) added.push(structuredClone(def));
+    },
     setProfileMeta({ name, tag }) { cur.name = name; cur.tag = tag; },
-    dirty: () => norm(cur) !== start,
+    dirty: () => norm(cur, added) !== start,
     merged() {
       const out = structuredClone(base);
       out.profiles[idx] = structuredClone(cur);
+      if (added.length) out.sound.sounds = [...out.sound.sounds, ...structuredClone(added)];
       return out;
     },
   };

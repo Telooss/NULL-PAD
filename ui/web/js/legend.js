@@ -1,5 +1,5 @@
 // Legendes affichees sur les touches. Pur : aucun acces DOM.
-const base = (p) => p.split(/[\\/]/).pop();
+const base = (p) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
 const stem = (p) => base(p).replace(/\.[^.]*$/, '');
 
 function ofAction(a) {
@@ -8,11 +8,12 @@ function ofAction(a) {
     case 'ObsScene': return a.scene;
     case 'Shortcut': return a.keys.toUpperCase();
     case 'Volume': return a.delta < 0 ? 'VOL−' : 'VOL+';
+    case 'SoundVolume': return a.delta < 0 ? 'SON−' : 'SON+';
     case 'MicVolume': return a.delta < 0 ? 'MIC−' : 'MIC+';
     case 'Launch': return stem(a.program);
     case 'MidiNote': return `N${a.note}`;
     case 'MidiCc': return `CC${a.cc}`;
-    case 'Text': return a.text;
+    case 'Text': return a.text.toUpperCase();
     case 'Open': return base(a.target);
     case 'Macro': return 'MACRO';
     case 'Command': return 'CMD';

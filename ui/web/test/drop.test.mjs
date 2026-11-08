@@ -14,10 +14,11 @@ test('audio -> Sound with unique id', () => {
 });
 test('programs and scripts', () => {
   assert.deepEqual(d(['C:\\a.exe']).action, { type: 'Launch', program: 'C:\\a.exe', args: [] });
-  assert.equal(d(['C:\\a.lnk']).action.type, 'Launch');
-  assert.deepEqual(d(['C:\\a.ps1']).action, { type: 'Command', line: 'powershell -ExecutionPolicy Bypass -File "C:\\a.ps1"' });
-  assert.deepEqual(d(['C:\\a.bat']).action, { type: 'Command', line: '"C:\\a.bat"' });
+  assert.deepEqual(d(['C:\\a.lnk']).action, { type: 'Open', target: 'C:\\a.lnk' });
+  assert.deepEqual(d(['C:\\a.ps1']).action, { type: 'Command', line: "& powershell -NoProfile -ExecutionPolicy Bypass -File 'C:\\a.ps1'" });
+  assert.deepEqual(d(['C:\\a.bat']).action, { type: 'Command', line: "& 'C:\\a.bat'" });
   assert.equal(d(['C:\\a.CMD']).action.type, 'Command');
+  assert.equal(d(["C:\\it's $x\\a.bat"]).action.line, "& 'C:\\it''s $x\\a.bat'");
   assert.deepEqual(d(['C:\\a.pdf']).action, { type: 'Open', target: 'C:\\a.pdf' });
 });
 test('several files', () => {
