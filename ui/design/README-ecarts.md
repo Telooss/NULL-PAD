@@ -7,7 +7,7 @@ Les fichiers de ce dossier sont la copie telle quelle de l'artefact. Les fichier
   - densite de pixels plafonnee a 1,5 au lieu de 2 ;
   - `render()` ne dessine plus directement : il demande une image via un seul `requestAnimationFrame` en attente (les appels se regroupent) ; rien n'est dessine si `document.hidden`, et un `visibilitychange` redemande une image au retour ;
   - textures de legende et du nice!view redessinees seulement si leur contenu change ; une legende peut etre `[l1, l2]` (deux lignes, 50 px) ;
-  - placement de la camera dans `aim()`, refait par `resize(w, h)` ;
+  - placement de la camera dans `aim()`, refait par `resize(w, h)`, qui redessine aussitot (le `setSize` vide le canvas ; image en attente annulee), seulement sur un vrai changement de taille ;
   - survol factorise dans `hoverOn()`, plus un `pointerleave` qui l'efface ;
   - nouvelles fonctions renvoyees : `hover(piece)`, `press(piece, down, dz=1.5)` (enfoncement le long de z avec la legende et le contour, lueur violette), `pick(x, y)`, `resize`, `dispose`, `invalidate`, `frames()`.
 - `web/css/tokens.css` : variables `:root` et classes de texte (`.ui-small`, ...) ecrites depuis `tokens.json`. Les previews de l'artefact les recevaient de la plateforme.

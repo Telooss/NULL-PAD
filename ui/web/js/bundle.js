@@ -249,7 +249,7 @@
       glow(m, down ? 0.35 : m === sel ? 0.18 : m === hover ? 0.08 : 0); render();
     }
     function pick(x, y) { var m = hit({ clientX: x, clientY: y }); return m ? m.name : null; }
-    function resize(w, h) { if (!w || !h || (w === W && h === H)) return; W = w; H = h; r.setSize(W, H); aim(); anchor(); render(); }
+    function resize(w, h) { if (!w || !h || (w === W && h === H)) return; W = w; H = h; r.setSize(W, H); aim(); anchor(); if (raf) cancelAnimationFrame(raf); draw(); } // nullctl : setSize vide le canvas, on redessine tout de suite
     function dispose() {
       dead = true; if (raf) cancelAnimationFrame(raf); document.removeEventListener('visibilitychange', onVis);
       r.dispose(); r.domElement.remove(); anc.remove(); stage.querySelectorAll('.nc-callout').forEach(function (n) { n.remove(); });

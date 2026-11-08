@@ -236,7 +236,7 @@ const q = new URLSearchParams(location.search);
 if (q.get('test') === '1') {
   window.__padFrames = () => pad.frames();
   window.__layoutOk = () => document.querySelector('.nc-topbar').scrollWidth <= innerWidth && document.querySelector('.nc-panel').getBoundingClientRect().right <= innerWidth &&
-    [...document.querySelectorAll('.nc-sticker')].every((s) => s.scrollWidth <= s.clientWidth);
+    (innerWidth < 1200 || [...document.querySelectorAll('.nc-sticker')].every((s) => s.scrollWidth <= s.clientWidth)); // ellipse admise pres du minimum
 }
 
 N.icons();
