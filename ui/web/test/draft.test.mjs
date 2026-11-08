@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createDraft, canBind } from '../js/draft.js';
+import { createDraft, canBind, mergeDraft } from '../js/draft.js';
 
 const cfg = () => ({
   version: 1,
@@ -78,4 +78,21 @@ test('updateSound patches the library, dirty, merged', () => {
   assert.equal(d.dirty(), false);
   d.updateSound('zz', { volume: 1 });
   assert.deepEqual(c, orig);
+});
+test('mergeDraft keeps latest settings/profiles, applies profile and sound changes only', () => {
+  const base = cfg(); base.sound.sounds = [{ id: 'a', volume: 1 }, { id: 'b', volume: 1 }];
+  const d = createDraft(base, 2);
+  d.set('K01', 'Press', { type: 'Text', text: 'n' });
+  d.addSound({ id: 'c', volume: 1 });
+  d.updateSound('a', { volume: 0.5 });
+  const latest = structuredClone(base);
+  latest.obs.port = 9; latest.profiles[0].name = 'A2';
+  latest.sound.sounds[1].volume = 0.2; // edite ailleurs : doit survivre
+  const m = mergeDraft(latest, d.get(), d.soundChanges());
+  assert.equal(m.obs.port, 9);
+  assert.equal(m.profiles[0].name, 'A2');
+  assert.equal(m.profiles[1].bindings.length, 2);
+  assert.deepEqual(m.sound.sounds, [{ id: 'a', volume: 0.5 }, { id: 'b', volume: 0.2 }, { id: 'c', volume: 1 }]);
+  assert.deepEqual(mergeDraft(latest, d.get()).sound, latest.sound);
+  assert.throws(() => mergeDraft({ ...latest, profiles: [latest.profiles[0]] }, d.get()), /supprimé/);
 });

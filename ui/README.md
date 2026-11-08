@@ -60,7 +60,11 @@ Définie dans `tauri.conf.json` :
 | `style-src 'self' 'unsafe-inline'` | feuilles de `css/` ; le code pose des attributs `style` (positions, largeurs) |
 | `img-src 'self' data: blob:` | images locales ; `data:` pour le grain en SVG des feuilles de style ; `blob:` par précaution pour les textures |
 | `font-src 'self'` | polices de `web/fonts` |
-| `connect-src ipc: http://ipc.localhost` | appels Tauri vers le Rust (`invoke`, événements) |
+| `connect-src 'self' ipc: http://ipc.localhost` | `'self'` : `fetch('assets/nullpad.json')` (géométrie du pad) ; `ipc:` et `http://ipc.localhost` : appels Tauri vers le Rust (`invoke`, événements) |
+
+Vérifié sans autre besoin : scripts de module (`js/*.js`, `vendor/three.module.js`) en `script-src 'self'` ; polices en `font-src` ; textures three.js tirées de canvas (aucune URL, pas de CSP) ; SVG de grain en `data:` (`img-src`).
+
+OBS : la scène et la source sont du texte libre (lire la liste depuis OBS n'est pas implémenté).
 
 ## À tester à la main
 

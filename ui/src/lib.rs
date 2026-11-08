@@ -9,14 +9,28 @@ use engine::ipc::Response;
 use std::collections::BTreeMap;
 use tauri::Manager;
 
+/// Dossier parent de `nullctl` (et de l'ancien `NULL-PAD`).
+fn config_base() -> std::path::PathBuf {
+    let p = engine::paths::config_path();
+    p.parent().and_then(|p| p.parent()).map(Into::into).unwrap_or_default()
+}
+
+/// Jamais un defaut quand l'ancienne config existe encore : il pourrait ecraser celle de l'utilisateur.
+fn read_config(base: &std::path::Path) -> Result<Config, String> {
+    let path = base.join(engine::paths::APP_DIR).join("config.json");
+    if path.exists() {
+        return store::load(&path);
+    }
+    let old = base.join(engine::paths::OLD_APP_DIR).join("config.json");
+    if old.exists() {
+        return Err(format!("Ancienne config non migrée : {}", old.display()));
+    }
+    Ok(default_config())
+}
+
 #[tauri::command]
 fn get_config() -> Result<Config, String> {
-    let path = engine::paths::config_path();
-    if path.exists() {
-        store::load(&path)
-    } else {
-        Ok(default_config())
-    }
+    read_config(&config_base())
 }
 
 #[tauri::command]
@@ -108,9 +122,31 @@ pub fn run() {
             config_path
         ])
         .setup(|app| {
+            // Avant toute lecture de la config (comme le moteur).
+            if let Err(e) = engine::paths::migrate_app_dir(&config_base()) {
+                tracing::warn!("migration du dossier de config: {e}");
+            }
             pipes::spawn_events_relay(app.handle().clone());
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("erreur au lancement de nullctl");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unmigrated_old_config_is_an_error_not_a_default() {
+        let base = std::env::temp_dir().join(format!("nullctl-ui-cfg-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        assert_eq!(read_config(&base).unwrap(), default_config());
+        let old = base.join(engine::paths::OLD_APP_DIR);
+        std::fs::create_dir_all(&old).unwrap();
+        std::fs::write(old.join("config.json"), "{}").unwrap();
+        let e = read_config(&base).unwrap_err();
+        assert!(e.starts_with("Ancienne config non migrée : "), "{e}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
 }

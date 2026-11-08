@@ -135,7 +135,7 @@ fn main() {
                 Ok(()) => Response::ok(None),
                 Err(e) => Response::err(e),
             },
-            Request::TestMidi => match midi.send(&[cc(1, 127, 0)]) {
+            Request::TestMidi => match midi.send(&[cc(1, 20, 0)]) {
                 Ok(()) => Response::ok(None),
                 Err(e) => Response::err(e),
             },

@@ -5,7 +5,7 @@ import { createViewPanel } from './viewpanel.js';
 import { createEditPanel } from './editpanel.js';
 import { startLive, toast } from './live.js';
 import { legendsFor, panelModel, profileOf, profileSlots } from './view.js';
-import { createDraft } from './draft.js';
+import { createDraft, mergeDraft } from './draft.js';
 import { actionForDrop, refusal } from './drop.js';
 import { saveFlow, guard, confirmBox, modalOpen } from './config-mode.js';
 import { createSettings } from './settings.js';
@@ -180,9 +180,16 @@ async function commit(follow = true) {
   panelEl.inert = true;
   rename.inert = true;
   editPanel.setError(null);
-  const merged = draft.merged();
+  let merged;
   let r;
   try {
+    // Relue juste avant : les reglages ou autres profils modifies entre-temps sont gardes.
+    try {
+      merged = mergeDraft(await invoke('get_config'), draft.get(), draft.soundChanges());
+    } catch (e) {
+      toast(app, `Config illisible, rien n’a été écrit : ${e?.message ?? e}`);
+      return false;
+    }
     r = await saveFlow({
       json: JSON.stringify(merged),
       validate: (json) => invoke('validate_config', { json }),
@@ -393,6 +400,12 @@ await startLive({
   onConfig: (e) => {
     if (configWaiter) configWaiter(e);
     else if (e.ok) reload();
+  },
+  // Un demarrage du moteur a pu migrer l'ancienne config : on relit (relance si elle etait illisible).
+  onUp: async () => {
+    if (draft || saving) return;
+    if (!cfgError) return reload();
+    try { await invoke('get_config'); location.reload(); } catch { /* toujours illisible */ }
   },
 });
 

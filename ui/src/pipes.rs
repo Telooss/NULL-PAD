@@ -21,6 +21,8 @@ use windows::Win32::System::Threading::{
 
 pub const ENGINE_EXE: &str = "nullctl-engine.exe";
 const TIMEOUT: Duration = Duration::from_secs(3);
+// TestObs : jusqu'a 2 s par etape cote moteur.
+const TIMEOUT_OBS: Duration = Duration::from_secs(8);
 
 /// Refuse un pipe dont le serveur n'est pas `allowed` (nom de fichier de l'exe, sans casse).
 pub fn verify_server_named(handle: HANDLE, allowed: &str) -> Result<(), String> {
@@ -77,20 +79,22 @@ fn open(name: &str, allowed: &str, write: bool, deadline: Instant) -> Result<Fil
     Ok(f)
 }
 
-/// Une requete `{"cmd": cmd}` sur le pipe `name`, reponse en 3 s au plus.
-pub fn control_at(name: &str, allowed: &str, cmd: &str) -> Result<Response, String> {
-    let deadline = Instant::now() + TIMEOUT;
+/// Une requete `{"cmd": cmd}` sur le pipe `name`, reponse en `timeout` au plus.
+pub fn control_at(
+    name: &str,
+    allowed: &str,
+    cmd: &str,
+    timeout: Duration,
+) -> Result<Response, String> {
+    let deadline = Instant::now() + timeout;
     let (tx, rx) = mpsc::channel();
     let (name, allowed, cmd) = (name.to_string(), allowed.to_string(), cmd.to_string());
     // shortcut: un moteur muet garde ce thread bloque dans ReadFile jusqu'a sa fermeture ; acceptable pour une appli de bureau.
     thread::spawn(move || {
         let ask = || -> Result<Response, String> {
             let mut f = open(&name, &allowed, true, deadline)?;
-            let line = format!(
-                "{}
-",
-                serde_json::json!({ "cmd": cmd })
-            );
+            let line = format!("{}
+", serde_json::json!({ "cmd": cmd }));
             f.write_all(line.as_bytes()).map_err(|e| e.to_string())?;
             let mut resp = String::new();
             BufReader::new(f)
@@ -100,12 +104,13 @@ pub fn control_at(name: &str, allowed: &str, cmd: &str) -> Result<Response, Stri
         };
         let _ = tx.send(ask());
     });
-    rx.recv_timeout(TIMEOUT)
+    rx.recv_timeout(timeout)
         .unwrap_or_else(|_| Err("le moteur ne repond pas".into()))
 }
 
 pub fn control(cmd: &str) -> Result<Response, String> {
-    control_at(CONTROL_PIPE, ENGINE_EXE, cmd)
+    let t = if cmd == "test_obs" { TIMEOUT_OBS } else { TIMEOUT };
+    control_at(CONTROL_PIPE, ENGINE_EXE, cmd, t)
 }
 
 /// Relaie le pipe d'evenements `name` vers `emit`, pour toujours (reconnexion toutes les secondes).
@@ -209,9 +214,9 @@ mod tests {
     fn control_roundtrip() {
         let name = pipe_name();
         serve_control(&name, dummy).unwrap();
-        let r = control_at(&name, &me(), "status").unwrap();
+        let r = control_at(&name, &me(), "status", TIMEOUT).unwrap();
         assert_eq!(r, Response::ok(Some(json!({"profile": 2}))));
-        let r = control_at(&name, &me(), "test_obs").unwrap();
+        let r = control_at(&name, &me(), "test_obs", TIMEOUT).unwrap();
         assert_eq!(r, Response::err("non"));
     }
 
@@ -219,14 +224,14 @@ mod tests {
     fn control_refuses_unknown_server() {
         let name = pipe_name();
         serve_control(&name, dummy).unwrap();
-        let e = control_at(&name, "nullctl-engine.exe", "status").unwrap_err();
+        let e = control_at(&name, "nullctl-engine.exe", "status", TIMEOUT).unwrap_err();
         assert_eq!(e, "serveur du pipe non reconnu");
     }
 
     #[test]
     fn control_without_server_fails_fast() {
         let t0 = Instant::now();
-        assert!(control_at(&pipe_name(), &me(), "status").is_err());
+        assert!(control_at(&pipe_name(), &me(), "status", TIMEOUT).is_err());
         assert!(t0.elapsed() < Duration::from_secs(1));
     }
 

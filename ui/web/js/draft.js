@@ -10,6 +10,23 @@ const canon = (v) => JSON.stringify(v, (_, x) => (x && typeof x === 'object' && 
 const norm = (p) => canon({ name: p.name, tag: p.tag,
   bindings: [...p.bindings].sort((a, b) => (a.input + a.trigger).localeCompare(b.input + b.trigger)) });
 
+// Config la plus recente + le profil edite + les sons ajoutes/modifies : le reste n'est jamais ecrase.
+export function mergeDraft(latest, profile, soundChanges = []) {
+  const out = structuredClone(latest);
+  const i = out.profiles.findIndex((p) => p.id === profile.id);
+  if (i < 0) throw new Error(`profil ${profile.id} supprimé entre-temps`);
+  out.profiles[i] = structuredClone(profile);
+  if (soundChanges.length) {
+    const lib = out.sound?.sounds ?? [];
+    for (const s of soundChanges) {
+      const j = lib.findIndex((x) => x.id === s.id);
+      if (j >= 0) lib[j] = structuredClone(s); else lib.push(structuredClone(s));
+    }
+    out.sound = { ...out.sound, sounds: lib };
+  }
+  return out;
+}
+
 export function createDraft(config, profileId) {
   const base = structuredClone(config);
   const idx = base.profiles.findIndex((p) => p.id === profileId);
@@ -37,6 +54,8 @@ export function createDraft(config, profileId) {
       if (s) Object.assign(s, patch);
     },
     sounds: () => lib,
+    // Sons ajoutes ou modifies depuis l'entree en configuration.
+    soundChanges: () => lib.filter((s) => canon(base.sound?.sounds?.find((x) => x.id === s.id)) !== canon(s)),
     setProfileMeta({ name, tag }) { cur.name = name; cur.tag = tag; },
     dirty: () => norm(cur) !== start || canon(lib) !== libStart,
     merged() {
