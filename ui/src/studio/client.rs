@@ -55,6 +55,7 @@ pub struct Client<P: Port> {
     port: P,
     decoder: Decoder,
     next_id: u32,
+    zero_reads: u32,
     queue: VecDeque<studio::Notification>,
     /// Délai maximal d'un appel.
     pub timeout: Duration,
@@ -66,6 +67,7 @@ impl<P: Port> Client<P> {
             port,
             decoder: Decoder::new(),
             next_id: 1,
+            zero_reads: 0,
             queue: VecDeque::new(),
             timeout: Duration::from_secs(3),
         }
@@ -89,10 +91,22 @@ impl<P: Port> Client<P> {
             Err(e) if matches!(e.kind(), ErrorKind::TimedOut | ErrorKind::WouldBlock) => 0,
             Err(_) => return Err(StudioError::Disconnected),
         };
+        // Ok(0) répété = port mort (un vrai port en attente rend TimedOut).
+        if n == 0 {
+            self.zero_reads += 1;
+            if self.zero_reads >= 50 {
+                return Err(StudioError::Disconnected);
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        } else {
+            self.zero_reads = 0;
+        }
         let mut out = Vec::new();
         for frame in self.decoder.push(&buf[..n]) {
-            let r = studio::Response::decode(frame.as_slice())
-                .map_err(|e| StudioError::Decode(e.to_string()))?;
+            // Trame illisible : on l'ignore, la réponse attendue peut suivre.
+            let Ok(r) = studio::Response::decode(frame.as_slice()) else {
+                continue;
+            };
             match r.r#type {
                 Some(studio::response::Type::RequestResponse(rr)) => out.push(rr),
                 Some(studio::response::Type::Notification(n)) => self.queue.push_back(n),
@@ -495,6 +509,23 @@ mod tests {
         let n = c.notifications();
         assert_eq!(n.len(), 1);
         assert!(c.notifications().is_empty());
+    }
+
+    #[test]
+    fn garbage_frame_is_skipped() {
+        let mut f = FakePad::new();
+        f.inject_raw(&[0xFF, 0xFF, 0xFF]);
+        assert_eq!(client(f).device_info().unwrap().name, "NULL/PAD");
+    }
+
+    #[test]
+    fn endless_zero_reads_is_disconnected() {
+        let mut f = FakePad::new();
+        f.silent = true;
+        f.zero_reads = true;
+        let mut c = client(f);
+        c.timeout = Duration::from_secs(10);
+        assert_eq!(c.device_info().unwrap_err(), StudioError::Disconnected);
     }
 
     #[test]

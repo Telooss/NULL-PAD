@@ -106,6 +106,8 @@ pub(crate) struct FakePad {
     pub cut_after_bytes: Option<usize>,
     /// Ne répond à rien (test de délai).
     pub silent: bool,
+    /// Au repos, les lectures rendent Ok(0) au lieu de TimedOut.
+    pub zero_reads: bool,
     /// Après la N-ième requête : déverrouille (et notifie si `true`).
     pub unlock_after: Option<(usize, bool)>,
     pub keymap: keymap::Keymap,
@@ -124,6 +126,7 @@ impl FakePad {
             unsaved: false,
             cut_after_bytes: None,
             silent: false,
+            zero_reads: false,
             unlock_after: None,
             saved: keymap.clone(),
             keymap,
@@ -137,6 +140,11 @@ impl FakePad {
     /// Met une réponse/notification brute dans la file de sortie (mauvais id, notification...).
     pub fn inject(&mut self, r: studio::Response) {
         self.outbound.extend(encode(&r.encode_to_vec()));
+    }
+
+    /// Octets bruts encadrés en trame (charge utile illisible).
+    pub fn inject_raw(&mut self, payload: &[u8]) {
+        self.outbound.extend(encode(payload));
     }
 
     fn reply(&mut self, id: u32, s: studio::request_response::Subsystem) {
@@ -308,6 +316,9 @@ impl Read for FakePad {
             room = room.min(cut - self.served);
         }
         if self.outbound.is_empty() {
+            if self.zero_reads {
+                return Ok(0);
+            }
             std::thread::sleep(std::time::Duration::from_millis(1));
             return Err(io::ErrorKind::TimedOut.into());
         }
