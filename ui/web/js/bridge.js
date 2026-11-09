@@ -76,8 +76,9 @@ Object.assign(mock, {
     return upd === '1' ? { version: '9.9.9', notes: 'Nouveautés de test :\n- <b>pas du HTML</b>\n- progression simulée', date: '2026-11-09T12:00:00Z' } : null;
   },
   // Ne se termine pas : la vraie appli redemarre ici.
-  update_install: async () => {
+  update_install: async ({ expectedVersion }) => {
     if (upd !== '1') throw 'network: mise a jour introuvable';
+    if (expectedVersion !== '9.9.9') throw 'install: version changée';
     const total = 4_000_000;
     for (let d = 0; d <= total; d += 250_000) {
       emit('update-progress', { downloaded: d, total });

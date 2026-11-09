@@ -98,7 +98,7 @@ export function mountShell() {
 }
 
 // Bandeau « Mise à jour X disponible » (nc-toast qui reste jusqu'a « Plus tard ») : version et notes de latest.json
-// en textContent seulement. -> { progress({pct, text}), ready(msg) (boutons de retour), close() }.
+// en textContent seulement. -> { progress({pct, text}), ready(msg) (boutons de retour ; « Réessayer » apres une erreur), close() }.
 export function updateBanner(app, { version, notes }, { onInstall, onLater }) {
   const el = document.createElement('div');
   el.className = 'nc-toast nc-update';
@@ -123,6 +123,7 @@ export function updateBanner(app, { version, notes }, { onInstall, onLater }) {
     ready(msg = '') {
       q('.nc-slider').style.display = 'none';
       q('.msg').textContent = msg;
+      q('[data-install]').textContent = msg ? 'Réessayer' : 'Installer';
       buttons(true);
     },
     close: () => el.remove(),

@@ -141,6 +141,12 @@ pub fn run() {
             if let Err(e) = engine::paths::migrate_app_dir(&config_base()) {
                 tracing::warn!("migration du dossier de config: {e}");
             }
+            // Mise a jour installee : le moteur arrete pour l'installation est relance ici.
+            if update::take_engine_restart(&update::marker_dir()) {
+                if let Err(e) = pipes::start_engine() {
+                    tracing::warn!("relance du moteur apres la mise a jour: {e}");
+                }
+            }
             pipes::spawn_events_relay(app.handle().clone());
             Ok(())
         })

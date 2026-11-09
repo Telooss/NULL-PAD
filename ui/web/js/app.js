@@ -1,4 +1,4 @@
-import { invoke, listen, onFileDrop, pickFile, onCloseRequested, isMock } from './bridge.js';
+import { invoke, listen, onFileDrop, pickFile, onCloseRequested } from './bridge.js';
 import { createPad } from './pad.js';
 import { mountShell, updateBanner } from './shell.js';
 import { createViewPanel } from './viewpanel.js';
@@ -498,17 +498,14 @@ if (q.get('test') === '1') {
 N.icons();
 N.wire(main);
 
-// ── Mises a jour : au demarrage puis toutes les 6 h ; minuteur de 30 min (survit a la mise en veille) ──
-const LAST_KEY = 'nullctl.update.last';
-// Mock : toujours « jamais verifie », pour que ?update=1 s'affiche a chaque chargement.
-let lastCheck = isMock ? null : (() => { try { return Number(localStorage.getItem(LAST_KEY)) || null; } catch { return null; } })();
+// ── Mises a jour : a chaque demarrage puis toutes les 6 h ; minuteur de 30 min (survit a la mise en veille) ──
+let lastCheck = null; // en memoire seulement : chaque lancement verifie
 let updBox = null; // bandeau affiche : pas d'autre verification tant qu'il est la
 
 async function checkUpdate() {
   const now = Date.now();
   if (updBox || !shouldCheck(lastCheck, now, updateCheckOn())) return;
   lastCheck = now;
-  try { localStorage.setItem(LAST_KEY, String(now)); } catch { /* stockage indisponible : valable pour cette session */ }
   let info;
   try {
     info = await invoke('update_check');
@@ -516,17 +513,18 @@ async function checkUpdate() {
     return toast(app, describe(e));
   }
   if (!info || updBox) return;
-  updBox = updateBanner(app, info, { onInstall: installUpdate, onLater: () => { updBox.close(); updBox = null; } });
+  updBox = updateBanner(app, info, { onInstall: () => installUpdate(info.version), onLater: () => { updBox.close(); updBox = null; } });
 }
 
 // Brouillon modifie : meme question qu'a la fermeture. Sinon l'appli redemarre a la fin (Rust).
-async function installUpdate() {
+// version : celle affichee ; Rust refuse d'installer si latest.json annonce autre chose.
+async function installUpdate(version) {
   if (saving) return updBox.ready('Enregistrement en cours : réessayez dans un instant');
   if (!(await askLeave())) return updBox?.ready();
   updBox.progress({ pct: 0, text: 'Téléchargement…' });
   const unlisten = await listen('update-progress', ({ payload: p }) => updBox?.progress(progressText(p.downloaded, p.total)));
   try {
-    await invoke('update_install');
+    await invoke('update_install', { expectedVersion: version });
   } catch (e) {
     updBox?.ready(describe(e));
   } finally {

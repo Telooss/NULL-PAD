@@ -6,11 +6,13 @@
 //! demarre pas) ; la vraie cle arrive par `tauri.bundle.json` (Task 3). Pubkey vide = build de
 //! developpement : `update_check` renvoie `None` sans rien demander au reseau.
 //!
-//! Sous Windows, `Update::install` lance l'installeur NSIS puis quitte le processus ; l'installeur
-//! relance nullctl, et ses hooks (Task 3) relancent le moteur arrete ici.
+//! Sous Windows, `Update::install` lance l'installeur NSIS puis quitte le processus (`app.restart()`
+//! n'est pas atteint) ; l'installeur relance nullctl. Le moteur arrete ici est relance par la nouvelle
+//! version au demarrage, grace au marqueur `engine-restart` pose juste avant l'installation.
 
 use crate::pipes;
 use serde::Serialize;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_updater::{Error, Update, UpdaterExt};
@@ -57,7 +59,16 @@ async fn find(app: &AppHandle) -> Result<Option<Update>, String> {
         tracing::info!("mise a jour: pas de cle publique (build de developpement)");
         return Ok(None);
     }
-    match app.updater().map_err(prefixed)?.check().await {
+    // Delais de connexion et de lecture (verification et telechargement) : un reseau bloque echoue.
+    let updater = app
+        .updater_builder()
+        .configure_client(|c| {
+            c.connect_timeout(Duration::from_secs(15))
+                .read_timeout(Duration::from_secs(30))
+        })
+        .build()
+        .map_err(prefixed)?;
+    match updater.check().await {
         // latest.json en 404 (aucune release publiee) : pas une panne.
         Err(Error::ReleaseNotFound) => {
             tracing::info!("mise a jour: aucune release publiee");
@@ -80,35 +91,61 @@ pub async fn update_check(app: AppHandle) -> Result<Option<UpdateInfo>, String> 
     }))
 }
 
+/// Pas de progression : le pourcentage entier, ou les Mo sans taille connue.
+fn progress_step(downloaded: u64, total: Option<u64>) -> u64 {
+    match total {
+        Some(t) if t > 0 => downloaded * 100 / t,
+        _ => downloaded / 1_000_000,
+    }
+}
+
 /// Telecharge (signature verifiee par le plugin), arrete le moteur, installe et relance l'appli.
-/// Le moteur ne s'arrete qu'une fois le fichier telecharge et verifie.
+/// Le moteur ne s'arrete qu'une fois le fichier telecharge et verifie. `expected_version` : la
+/// version affichee ; si latest.json a change entre-temps, rien n'est installe.
 #[tauri::command]
-pub async fn update_install(app: AppHandle) -> Result<(), String> {
+pub async fn update_install(app: AppHandle, expected_version: String) -> Result<(), String> {
     let update = find(&app)
         .await?
         .ok_or("network: mise a jour introuvable")?;
+    if update.version != expected_version {
+        return Err("install: version changée".into());
+    }
     let mut downloaded = 0u64;
+    let mut last = None;
     let bytes = update
         .download(
             |n, total| {
                 downloaded += n as u64;
-                let _ = app.emit(
-                    "update-progress",
-                    serde_json::json!({ "downloaded": downloaded, "total": total }),
-                );
+                let step = Some(progress_step(downloaded, total));
+                if step != last {
+                    last = step;
+                    let _ = app.emit(
+                        "update-progress",
+                        serde_json::json!({ "downloaded": downloaded, "total": total }),
+                    );
+                }
             },
             || {},
         )
         .await
         .map_err(prefixed)?;
-    // Bloquant (pipe, attente de 5 s, installeur) : hors du runtime async.
+    let dir = marker_dir();
+    // Bloquant (pipe, attentes, installeur) : hors du runtime async.
     tauri::async_runtime::spawn_blocking(move || {
         stop_engine_then(
-            || {
-                update.install(&bytes).map_err(|e| match prefix(&e) {
+            |was_running| {
+                if was_running {
+                    mark_engine_restart(&dir)
+                        .map_err(|e| format!("install: marqueur de relance: {e}"))?;
+                }
+                let r = update.install(&bytes).map_err(|e| match prefix(&e) {
                     "signature" => prefixed(e),
                     _ => format!("install: {e}"),
-                })
+                });
+                if r.is_err() {
+                    take_engine_restart(&dir); // relance faite par stop_engine_then
+                }
+                r
             },
             &mut Engine,
         )
@@ -118,25 +155,71 @@ pub async fn update_install(app: AppHandle) -> Result<(), String> {
     app.restart()
 }
 
+const MARKER: &str = "engine-restart";
+
+/// Dossier du marqueur : celui de config.json.
+pub fn marker_dir() -> PathBuf {
+    let p = engine::paths::config_path();
+    p.parent().map(Into::into).unwrap_or_default()
+}
+
+/// Pose le marqueur : le moteur tournait avant l'installation.
+pub fn mark_engine_restart(dir: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir)?;
+    std::fs::write(dir.join(MARKER), b"")
+}
+
+/// Retire le marqueur ; true s'il existait (le moteur est alors a relancer).
+pub fn take_engine_restart(dir: &Path) -> bool {
+    std::fs::remove_file(dir.join(MARKER)).is_ok()
+}
+
+/// Echec de l'arret du moteur.
+pub enum Stop {
+    /// `quit` refuse ou serveur inconnu : le moteur tourne toujours.
+    Refused(String),
+    /// `quit` envoye, mais pas de sortie a temps : le moteur peut encore s'arreter.
+    Partial(String),
+}
+
+/// Attente supplementaire apres un arret partiel, avant de relancer le moteur.
+const PARTIAL_WAIT: Duration = Duration::from_secs(15);
+
 /// Arret et relance du moteur, separes pour tester l'ordre avec un faux moteur.
 pub trait EngineCtl {
     /// Arrete le moteur : `Ok(true)` s'il tournait, `Ok(false)` s'il etait deja arrete.
-    fn stop(&mut self) -> Result<bool, String>;
+    fn stop(&mut self) -> Result<bool, Stop>;
+    /// Attend la sortie du moteur (`max` au plus).
+    fn wait_gone(&mut self, max: Duration);
     fn start(&mut self) -> Result<(), String>;
 }
 
-/// Arrete le moteur puis installe ; si l'installation echoue, relance le moteur s'il tournait.
-/// Un moteur qui refuse de s'arreter annule l'installation (`engine:`).
+fn restart(engine: &mut impl EngineCtl) {
+    if let Err(e) = engine.start() {
+        tracing::warn!("relance du moteur apres l'echec de la mise a jour: {e}");
+    }
+}
+
+/// Arrete le moteur puis installe (`install(etait_lance)`) ; si l'installation echoue, relance le
+/// moteur s'il tournait. Un moteur qui ne s'arrete pas annule l'installation (`engine:`) ; s'il a
+/// recu `quit`, il est relance une fois sorti, pour ne jamais rester arrete.
 pub fn stop_engine_then(
-    install: impl FnOnce() -> Result<(), String>,
+    install: impl FnOnce(bool) -> Result<(), String>,
     engine: &mut impl EngineCtl,
 ) -> Result<(), String> {
-    let was_running = engine.stop().map_err(|e| format!("engine: {e}"))?;
-    let r = install();
-    if r.is_err() && was_running {
-        if let Err(e) = engine.start() {
-            tracing::warn!("relance du moteur apres l'echec de la mise a jour: {e}");
+    let was_running = match engine.stop() {
+        Ok(r) => r,
+        Err(Stop::Refused(e)) => return Err(format!("engine: {e}")),
+        Err(Stop::Partial(e)) => {
+            engine.wait_gone(PARTIAL_WAIT);
+            // Toujours la apres l'attente : le mutex du moteur fait sortir la nouvelle instance.
+            restart(engine);
+            return Err(format!("engine: {e}"));
         }
+    };
+    let r = install(was_running);
+    if r.is_err() && was_running {
+        restart(engine);
     }
     r
 }
@@ -144,21 +227,32 @@ pub fn stop_engine_then(
 struct Engine;
 
 impl EngineCtl for Engine {
-    fn stop(&mut self) -> Result<bool, String> {
+    fn stop(&mut self) -> Result<bool, Stop> {
         match pipes::control("quit") {
             Err(e) if e == pipes::ENGINE_DOWN => return Ok(false),
-            Err(e) => return Err(e),
-            Ok(r) if !r.ok => return Err(r.error.unwrap_or_else(|| "quit refuse".into())),
+            Err(e) if e == "serveur du pipe non reconnu" => return Err(Stop::Refused(e)),
+            // Delai ou pipe coupe : le moteur a peut-etre recu `quit`.
+            Err(e) => return Err(Stop::Partial(e)),
+            Ok(r) if !r.ok => {
+                return Err(Stop::Refused(
+                    r.error.unwrap_or_else(|| "quit refuse".into()),
+                ))
+            }
             Ok(_) => {}
         }
-        let deadline = Instant::now() + Duration::from_secs(5);
-        while !pipes::engine_gone() {
-            if Instant::now() >= deadline {
-                return Err("le moteur ne s'est pas arrete".into());
-            }
+        self.wait_gone(Duration::from_secs(5));
+        if pipes::engine_gone() {
+            Ok(true)
+        } else {
+            Err(Stop::Partial("le moteur ne s'est pas arrete".into()))
+        }
+    }
+
+    fn wait_gone(&mut self, max: Duration) {
+        let deadline = Instant::now() + max;
+        while !pipes::engine_gone() && Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(100));
         }
-        Ok(true)
     }
 
     fn start(&mut self) -> Result<(), String> {
@@ -171,20 +265,32 @@ mod tests {
     use super::*;
     use std::cell::RefCell;
 
+    #[derive(Clone, Copy)]
+    enum Mode {
+        Stops,
+        Refuses,
+        StopsHalfway,
+    }
+
     /// Faux moteur ; `log` est partage avec l'installation pour verifier l'ordre des appels.
     struct Fake<'a> {
         running: bool,
-        refuse: bool,
+        mode: Mode,
         log: &'a RefCell<Vec<&'static str>>,
     }
 
     impl EngineCtl for Fake<'_> {
-        fn stop(&mut self) -> Result<bool, String> {
+        fn stop(&mut self) -> Result<bool, Stop> {
             self.log.borrow_mut().push("stop");
-            if self.refuse {
-                return Err("le moteur ne s'est pas arrete".into());
+            match self.mode {
+                Mode::Stops => Ok(std::mem::replace(&mut self.running, false)),
+                Mode::Refuses => Err(Stop::Refused("quit refuse".into())),
+                Mode::StopsHalfway => Err(Stop::Partial("le moteur ne s'est pas arrete".into())),
             }
-            Ok(std::mem::replace(&mut self.running, false))
+        }
+        fn wait_gone(&mut self, _: Duration) {
+            self.log.borrow_mut().push("wait");
+            self.running = false;
         }
         fn start(&mut self) -> Result<(), String> {
             self.log.borrow_mut().push("start");
@@ -194,16 +300,21 @@ mod tests {
     }
 
     /// Lance stop_engine_then avec une installation qui reussit ou non -> (resultat, appels).
-    fn run(running: bool, refuse: bool, ok: bool) -> (Result<(), String>, Vec<&'static str>) {
+    /// L'installation note si le moteur tournait (marqueur de relance).
+    fn run(running: bool, mode: Mode, ok: bool) -> (Result<(), String>, Vec<&'static str>) {
         let log = RefCell::new(Vec::new());
         let mut e = Fake {
             running,
-            refuse,
+            mode,
             log: &log,
         };
         let r = stop_engine_then(
-            || {
-                log.borrow_mut().push("install");
+            |was_running| {
+                log.borrow_mut().push(if was_running {
+                    "install+mark"
+                } else {
+                    "install"
+                });
                 if ok {
                     Ok(())
                 } else {
@@ -217,34 +328,71 @@ mod tests {
 
     #[test]
     fn running_engine_is_stopped_before_install() {
-        assert_eq!(run(true, false, true), (Ok(()), vec!["stop", "install"]));
+        assert_eq!(
+            run(true, Mode::Stops, true),
+            (Ok(()), vec!["stop", "install+mark"])
+        );
     }
 
     #[test]
     fn failed_install_restarts_a_running_engine() {
         assert_eq!(
-            run(true, false, false),
+            run(true, Mode::Stops, false),
             (
                 Err("install: refuse".into()),
-                vec!["stop", "install", "start"]
+                vec!["stop", "install+mark", "start"]
             )
         );
     }
 
     #[test]
     fn stopped_engine_is_never_started() {
-        assert_eq!(run(false, false, true), (Ok(()), vec!["stop", "install"]));
         assert_eq!(
-            run(false, false, false),
+            run(false, Mode::Stops, true),
+            (Ok(()), vec!["stop", "install"])
+        );
+        assert_eq!(
+            run(false, Mode::Stops, false),
             (Err("install: refuse".into()), vec!["stop", "install"])
         );
     }
 
     #[test]
     fn engine_refusing_to_stop_cancels_install() {
-        let (r, log) = run(true, true, true);
+        let (r, log) = run(true, Mode::Refuses, true);
         assert!(r.as_ref().unwrap_err().starts_with("engine: "), "{r:?}");
         assert_eq!(log, vec!["stop"]);
+    }
+
+    #[test]
+    fn half_stopped_engine_is_restarted_without_install() {
+        let (r, log) = run(true, Mode::StopsHalfway, true);
+        assert!(r.as_ref().unwrap_err().starts_with("engine: "), "{r:?}");
+        assert_eq!(log, vec!["stop", "wait", "start"]);
+    }
+
+    #[test]
+    fn restart_marker_roundtrip() {
+        let dir = std::env::temp_dir()
+            .join(format!("nullctl-marker-{}", std::process::id()))
+            .join("nullctl");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(!take_engine_restart(&dir));
+        mark_engine_restart(&dir).unwrap(); // cree le dossier manquant
+        assert!(take_engine_restart(&dir));
+        assert!(!take_engine_restart(&dir)); // une seule relance
+        let _ = std::fs::remove_dir_all(dir.parent().unwrap());
+    }
+
+    #[test]
+    fn progress_step_changes_per_whole_percent() {
+        assert_eq!(progress_step(0, Some(1000)), 0);
+        assert_eq!(progress_step(9, Some(1000)), 0);
+        assert_eq!(progress_step(10, Some(1000)), 1);
+        assert_eq!(progress_step(1000, Some(1000)), 100);
+        // Taille inconnue : un pas par Mo.
+        assert_eq!(progress_step(2_500_000, None), 2);
+        assert_eq!(progress_step(5, Some(0)), 0);
     }
 
     #[test]
