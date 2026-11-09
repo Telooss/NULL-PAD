@@ -48,6 +48,8 @@ cargo run -p engine -- --simulate                    # config par défaut, saisi
 nullctl-engine.exe --simulate --config C:\temp\test.json
 ```
 
+`--quit` arrête le moteur en cours (requête de contrôle `{"cmd":"quit"}` sur le pipe `\\.\pipe\nullctl-control`) et attend sa disparition, 5 s au plus : code 0 s'il est arrêté ou absent, 1 au dépassement du délai. Il ne démarre jamais de moteur.
+
 ## Fichier de config
 
 Emplacement : `%APPDATA%\nullctl\config.json` (le menu de l'icône ouvre le dossier).
