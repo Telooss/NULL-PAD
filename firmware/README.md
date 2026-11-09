@@ -47,6 +47,8 @@ Par défaut, la molette gauche règle le **volume** en natif (sans logiciel) et 
 
 ## ZMK Studio
 
+Pour les réglages courants (touches, molettes, profils, tag), **nullctl remplace ZMK Studio** : voir [../ui/README.md](../ui/README.md). Studio reste possible, mais pas en même temps que nullctl (un seul programme parle au pad).
+
 - Déverrouiller avec **M1 + M3** appuyés ensemble.
 - Connexion **par USB ou Bluetooth** (`ZMK_STUDIO_TRANSPORT_BLE=y`) ; USB recommandé.
 - Les molettes apparaissent en haut de la disposition : 4 touches cachées et 2 clics, avec un espace entre molette gauche et droite.
