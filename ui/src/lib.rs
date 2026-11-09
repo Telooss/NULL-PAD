@@ -3,6 +3,7 @@ pub mod native;
 pub mod pipes;
 pub mod settings;
 pub mod store;
+pub(crate) mod studio;
 
 use engine::config::{default_config, Config};
 use engine::ipc::Response;
@@ -34,13 +35,13 @@ fn get_config() -> Result<Config, String> {
 }
 
 #[tauri::command]
-fn validate_config(json: String) -> Result<(), String> {
-    store::validate(&json)
+fn validate_config(json: String, pad: Option<studio::model::PadModel>) -> Result<(), String> {
+    store::validate(&json, pad.as_ref())
 }
 
 #[tauri::command]
-fn save_config(json: String) -> Result<(), String> {
-    store::save_atomic(&engine::paths::config_path(), &json)
+fn save_config(json: String, pad: Option<studio::model::PadModel>) -> Result<(), String> {
+    store::save_atomic(&engine::paths::config_path(), &json, pad.as_ref())
 }
 
 #[tauri::command]
@@ -106,6 +107,7 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_dialog::init())
+        .manage(studio::commands::PadState::default())
         .invoke_handler(tauri::generate_handler![
             get_config,
             validate_config,
@@ -119,7 +121,15 @@ pub fn run() {
             cable_present,
             get_autostart,
             set_autostart,
-            config_path
+            config_path,
+            studio::commands::pad_status,
+            studio::commands::pad_read,
+            studio::commands::pad_cancel_unlock,
+            studio::commands::pad_cached,
+            studio::commands::pad_write,
+            studio::commands::pad_discard_foreign,
+            studio::commands::hid_catalog,
+            studio::commands::pad_default_layer
         ])
         .setup(|app| {
             // Avant toute lecture de la config (comme le moteur).

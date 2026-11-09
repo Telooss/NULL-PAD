@@ -4,13 +4,16 @@ import { slotLabel } from './profiles.js';
 
 const N = window.NullCtl;
 const LINK_ICON = { usb: 'usb', ble: 'bluetooth', none: 'unplug' };
+// Pastille du pad (pillState de pad-model.js) : [icone, texte].
+const PAD_PILL = { editable: ['unlock', 'Pad modifiable'], locked: ['lock', 'Pad verrouillé'], absent: ['unplug', 'Pad non branché'],
+  stale: ['alert-triangle', 'Pad pas à jour'], busy: ['loader', 'Pad occupé'] };
 
 // Barre des profils : setSlots(barSlots(config), actif) a chaque changement ; renvoie les mises a jour de la barre.
 export function mountShell() {
   document.getElementById('shell').outerHTML = N.shell({ profiles: [], active: -1 });
   const bar = document.querySelector('.nc-status');
   bar.innerHTML =
-    '<span class="nc-pill" data-link></span><span class="nc-pill" data-engine></span>' +
+    '<span class="nc-pill" data-link></span><span class="nc-pill" data-pad></span><span class="nc-pill" data-engine></span>' +
     '<button class="nc-btn is-primary" data-start style="display:none" title="Démarrer le moteur"><i data-lucide="play"></i><span class="lbl">Démarrer le moteur</span></button>' +
     '<span class="nc-pill" data-saved title="Enregistré"><i data-lucide="check"></i><span class="lbl">Enregistré</span></span>' +
     '<button class="nc-btn" data-configure title="Configurer"><i data-lucide="pencil"></i><span class="lbl">Configurer</span></button>' +
@@ -44,6 +47,7 @@ export function mountShell() {
 
   return {
     setLink: (link) => pill(q('[data-link]'), LINK_ICON[link] ?? 'unplug', linkText(link)),
+    setPad: (state) => pill(q('[data-pad]'), ...(PAD_PILL[state] ?? PAD_PILL.absent)),
     setEngine(up) {
       engineUp = up;
       pill(q('[data-engine]'), up ? 'cpu' : 'power-off', up ? 'Moteur en marche' : 'Moteur arrêté');

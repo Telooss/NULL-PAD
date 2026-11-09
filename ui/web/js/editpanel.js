@@ -6,6 +6,8 @@ import { refusal } from './drop.js';
 import { defaultAction } from './editors/model.js';
 import { renderFields, h } from './editors/render.js';
 import { minimap } from './viewpanel.js';
+import { isAction, INPUTS } from './pad-model.js';
+import { nativeCurrent, nativePicker } from './editors/native.js';
 
 const N = window.NullCtl;
 const TAB_LABELS = { Press: 'Appui court', Hold: 'Appui long', DoubleTap: 'Double' };
@@ -14,7 +16,7 @@ const note = (iconName, text) => h('div', { class: 'nc-note' }, h('i', { 'data-l
 
 // ctx : { pickFile(opts), onChange() } — onChange : le brouillon a change (legendes a redessiner).
 export function createEditPanel(el, { pickFile, onChange }) {
-  let s = null; // { input, draft, profileId, natives }
+  let s = null; // { input, draft, profileId, natives, pad }
   let error = null;
   let picking = null; // « input|trigger » dont le catalogue est ouvert
   const tabs = {};
@@ -32,8 +34,18 @@ export function createEditPanel(el, { pickFile, onChange }) {
   function slot(sl, single) {
     const sec = h('div', { class: 'nc-section', style: 'gap:12px' });
     if (sl.title) sec.append(h('span', { class: 'nc-label' }, sl.title));
-    const ref = refusal(sl.input, s.profileId, s.natives);
+    const ref = refusal(sl.input, s.profileId, s.natives, s.pad);
     if (ref) { sec.append(note('lock', ref)); return sec; }
+    // Pad modifiable : position native (famille « Touche native » seulement), ou touche native choisie dans le catalogue
+    // (pas de declencheur : la touche entiere change).
+    const nk = `${sl.input}|native`;
+    const native = s.pad?.editable && !isAction(s.pad.model, s.profileId, sl.input);
+    if (native || picking === nk) {
+      const cur = native ? s.pad.model.layers[s.profileId - 1].bindings[INPUTS.indexOf(sl.input)] : null;
+      if (picking === nk) sec.append(...nativePicker({ current: cur, catalog: s.pad.catalog, onPick: (nb) => { picking = null; s.pad.toNative(sl.input, nb); }, onCancel: () => { picking = null; render(); } }));
+      else sec.append(...nativeCurrent(cur, { onChange: () => { picking = nk; render(); }, onAction: () => s.pad.toAction(sl.input) }));
+      return sec;
+    }
     const ti = Math.min(tabs[sl.input] ?? 0, sl.triggers.length - 1);
     const trig = sl.triggers[ti];
     if (sl.triggers.length > 1) {
@@ -46,7 +58,10 @@ export function createEditPanel(el, { pickFile, onChange }) {
       sec.append(h('span', { class: 'nc-label' }, b ? "Changer d'action" : 'Choisir une action'),
         h('div', { class: 'nc-actions', style: 'padding:0' }, ACTIONS.map((a) => h('button', { class: 'nc-action',
           onclick: () => { picking = null; set(sl.input, trig, defaultAction(a.type, ctx.sounds()), {}, true); } },
-        h('span', { class: 'ic' }, h('i', { 'data-lucide': a.icon })), h('span', { class: 'tx' }, h('b', {}, a.label), h('span', {}, a.desc))))));
+        h('span', { class: 'ic' }, h('i', { 'data-lucide': a.icon })), h('span', { class: 'tx' }, h('b', {}, a.label), h('span', {}, a.desc)))),
+        // Pad modifiable : la touche peut aussi envoyer une touche native (ses actions nullctl seront retirees).
+        s.pad?.editable ? h('button', { class: 'nc-action', onclick: () => { picking = `${sl.input}|native`; render(); } },
+          h('span', { class: 'ic' }, h('i', { 'data-lucide': 'keyboard' })), h('span', { class: 'tx' }, h('b', {}, 'Touche native'), h('span', {}, 'Envoyée par le pad, sans nullctl'))) : null));
       if (b) sec.append(h('div', { class: 'nc-row' }, h('button', { class: 'nc-btn', onclick: () => { picking = null; render(); } }, 'Garder l’action en cours')));
       return sec;
     }
@@ -85,7 +100,7 @@ export function createEditPanel(el, { pickFile, onChange }) {
         '<div class="nc-section"><span class="nc-label">Choisis une touche, ou dépose un fichier dessus</span></div>';
       if (error) el.append(h('div', { class: 'nc-section' }, note('alert-triangle', error)));
     } else {
-      const m = panelModel(s.draft.merged(), s.profileId, s.input, s.natives);
+      const m = panelModel(s.draft.merged(), s.profileId, s.input, s.natives, s.pad?.model);
       el.innerHTML = `<div class="nc-panel-head"><div><div class="nc-label">Touche</div><div class="nc-keyname">${esc(m.name)}</div></div>` +
         `<div class="ui-small" style="color:var(--ink-muted)">${esc(m.place)}</div>${minimap(s.input)}</div>`;
       if (error) el.append(h('div', { class: 'nc-section' }, note('alert-triangle', error)));
@@ -99,7 +114,8 @@ export function createEditPanel(el, { pickFile, onChange }) {
   }
 
   return {
-    // st : { input, draft, profileId, natives } ; input peut etre null.
+    // st : { input, draft, profileId, natives, pad } ; input peut etre null.
+    // pad : { model, editable, catalog, toNative(input, binding), toAction(input) } ou null.
     show(st) {
       if (st?.input !== s?.input) picking = null;
       s = st;

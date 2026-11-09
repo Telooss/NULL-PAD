@@ -23,7 +23,7 @@ Un **profil** = une couche du firmware. Dans chaque profil, une touche est soit 
 | Soundboard intégrée qui joue dans le micro (remplace Soundpad) : sons mp3 / wav / ogg / flac vers le casque et VB-Cable, volume général, micro optionnel. | ✅ fait, à valider sur le vrai pad |
 | OBS (websocket) et Ableton (MIDI virtuel) | ✅ fait, à valider sur le vrai pad |
 | Firmware ZMK (profils, codes action, tag sur l'écran) | ✅ compile (local, WSL), à valider sur le vrai pad |
-| Écriture dans le pad depuis l'appli (ZMK Studio RPC) | à venir |
+| Écriture dans le pad depuis l'appli (ZMK Studio RPC) | ✅ faite, à valider sur le vrai pad |
 | Interface NULL/CONTROL (rendu 3D du pad, esthétique terminal hacktiviste Y2K, violet) | ✅ faite, à valider sur le vrai pad |
 
 ## Compiler et lancer
@@ -55,4 +55,5 @@ docs/superpowers/plans/         plans d'implémentation et suivi
 - [Conception du logiciel](docs/superpowers/specs/2026-11-05-logiciel-macropad-design.md)
 - [Plan du moteur](docs/superpowers/plans/2026-11-05-moteur.md) et [points de suivi](docs/superpowers/plans/2026-11-05-moteur-suivi.md)
 - [Conception de l'interface](docs/superpowers/specs/2026-11-07-interface-design.md) et [son README](ui/README.md)
+- [Écriture dans le pad : conception](docs/superpowers/specs/2026-11-08-ecriture-pad-design.md) et [plan](docs/superpowers/plans/2026-11-08-ecriture-pad.md)
 - [Moteur : usage, config, codes HID](engine/README.md)

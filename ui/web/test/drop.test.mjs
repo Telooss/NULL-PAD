@@ -31,7 +31,7 @@ test('several files', () => {
   assert.equal(r.warning, 'Seul le premier fichier est utilisé');
 });
 test('refused targets', () => {
-  assert.equal(d(['a.pdf'], 'K00', 1).error, 'Touche native du firmware : modifiable plus tard depuis le pad');
+  assert.equal(d(['a.pdf'], 'K00', 1).error, 'Touche native dans le pad : branchez le pad en USB pour la modifier');
   assert.equal(d(['a.pdf'], 'K00', 2).action.type, 'Open');
   assert.equal(d(['a.pdf'], 'M2', 2).error, 'Touche de profil du firmware : non modifiable ici');
   assert.equal(d(['a.pdf'], 'ENC_L_CW', 2).error, 'Molette gauche du firmware : non modifiable ici');
