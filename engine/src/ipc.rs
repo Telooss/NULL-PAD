@@ -21,6 +21,7 @@ use windows::Win32::Security::{
 use windows::Win32::Storage::FileSystem::{
     FlushFileBuffers, ReadFile, WriteFile, FILE_FLAGS_AND_ATTRIBUTES,
     FILE_FLAG_FIRST_PIPE_INSTANCE, PIPE_ACCESS_DUPLEX, PIPE_ACCESS_OUTBOUND,
+    SECURITY_IDENTIFICATION,
 };
 use windows::Win32::System::Pipes::{
     ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, PIPE_REJECT_REMOTE_CLIENTS,
@@ -398,14 +399,17 @@ pub fn serve_control(
 /// Client de `--quit` : envoie `quit`, puis attend que le pipe disparaisse (`wait` au plus).
 /// Ok si le moteur s'est arrete ou n'etait pas lance ; ne demarre jamais rien.
 pub fn quit_engine(name: &str, wait: Duration) -> Result<(), String> {
-    use std::io::{BufRead, BufReader, Write};
+    use std::io::Write;
+    use std::os::windows::fs::OpenOptionsExt;
     use std::time::Instant;
     let deadline = Instant::now() + wait;
     let absent = |e: &io::Error| e.raw_os_error() == Some(ERROR_FILE_NOT_FOUND.0 as i32);
     let open = || {
+        // Identification seulement : un faux serveur ne peut pas usurper notre jeton.
         std::fs::OpenOptions::new()
             .read(true)
             .write(true)
+            .security_qos_flags(SECURITY_IDENTIFICATION.0)
             .open(name)
     };
     let mut pipe = loop {
@@ -421,20 +425,18 @@ pub fn quit_engine(name: &str, wait: Duration) -> Result<(), String> {
             Err(e) => return Err(format!("pipe du moteur: {e}")),
         }
     };
-    let line = serde_json::to_string(&Request::Quit).map_err(|e| e.to_string())?
-        + "
-";
-    pipe.write_all(line.as_bytes()).map_err(|e| e.to_string())?;
-    // Le moteur peut se fermer avant de repondre : seule la disparition du pipe compte.
-    let _ = BufReader::new(&pipe).read_line(&mut String::new());
+    let line = serde_json::to_string(&Request::Quit).map_err(|e| e.to_string())? + "\n";
+    // Pas de lecture de la reponse (bloquante si le serveur se tait) : seule la
+    // disparition du pipe compte. Une erreur d'ecriture (moteur deja en sortie) est tolerée.
+    let _ = pipe.write_all(line.as_bytes());
     drop(pipe);
-    while open().is_ok() || open().is_err_and(|e| !absent(&e)) {
-        if Instant::now() >= deadline {
-            return Err("le moteur ne s'est pas arrete".into());
+    loop {
+        match open() {
+            Err(e) if absent(&e) => return Ok(()),
+            _ if Instant::now() >= deadline => return Err("le moteur ne s'est pas arrete".into()),
+            _ => thread::sleep(Duration::from_millis(100)),
         }
-        thread::sleep(Duration::from_millis(100));
     }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -604,5 +606,19 @@ mod tests {
         // Le faux serveur ne s'arrete jamais : le delai doit etre signale.
         assert!(quit_engine(&name, Duration::from_millis(400)).is_err());
         assert!(got.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[test]
+    fn quit_does_not_hang_on_silent_server() {
+        let name = unique_pipe("quit-mute");
+        // Le serveur accepte puis ne repond jamais.
+        serve_control(&name, |_| {
+            thread::sleep(Duration::from_secs(10));
+            Response::ok(None)
+        })
+        .unwrap();
+        let t = std::time::Instant::now();
+        assert!(quit_engine(&name, Duration::from_millis(500)).is_err());
+        assert!(t.elapsed() < Duration::from_secs(3), "{:?}", t.elapsed());
     }
 }
