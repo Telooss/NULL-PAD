@@ -71,6 +71,23 @@ Une touche est soit **native** (vraie touche clavier, marche sans logiciel), soi
 
 **ZMK Studio** reste utilisable, mais pas en même temps que nullctl : un seul programme à la fois peut parler au pad.
 
+## Installation et mises à jour
+
+L'installeur (`NULL-CONTROL_<version>_x64-setup.exe`) installe pour l'utilisateur courant, sans droits administrateur, dans `%LOCALAPPDATA%\NULL-CONTROL`, avec un raccourci du menu Démarrer. Il contient `nullctl.exe` et `nullctl-engine.exe`. Publier une version : [../docs/RELEASE.md](../docs/RELEASE.md).
+
+**Mises à jour**
+- nullctl cherche une nouvelle version à chaque lancement, puis toutes les 6 h.
+- Un bandeau « Mise à jour X disponible » montre les notes et deux boutons : « Installer » et « Plus tard ».
+- « Installer » : téléchargement avec progression, vérification de la signature, arrêt du moteur, installation, puis nullctl et le moteur redémarrent.
+- Si le brouillon de config a des changements non enregistrés, nullctl demande avant.
+- Le réglage « Vérifier les mises à jour » est dans Réglages > Démarrage.
+- Seules les mises à jour signées passent. La clé publique est dans `tauri.bundle.json`, et le refus des versions plus anciennes est actif (`requireSignedVersion`).
+- Dans le navigateur (mock) : `?update=1` montre le bandeau, `?update=err` fait échouer l'installation.
+
+**Désinstaller** : Paramètres Windows > Applications, ou le menu Démarrer. Le désinstalleur arrête le moteur et retire le démarrage automatique. La case « Supprimer les données de l'application », décochée par défaut, efface `%APPDATA%\nullctl` (config, sons, cache). Décochée, la config reste et une réinstallation la retrouve.
+
+**Mise à jour manuelle** (un setup plus récent lancé par-dessus) : démarrage automatique, config et moteur en marche sont conservés.
+
 ## Tests
 
 ```powershell
@@ -112,6 +129,15 @@ OBS : la scène et la source sont du texte libre (lire la liste depuis OBS n'est
 - [ ] Reverrouillage après 10 min
 - [ ] Lecture puis Enregistrer sans redemander M1 + M3 (le pad ne se reverrouille pas entre deux ouvertures du port)
 - [ ] nullctl ouvert pendant le test des 10 min
+
+Installeur et mises à jour :
+
+- [ ] Installer : nullctl et le moteur démarrent
+- [ ] Désinstaller case décochée : config gardée
+- [ ] Réinstaller : config retrouvée
+- [ ] Mise à jour manuelle (setup plus récent par-dessus) : démarrage auto et moteur conservés
+- [ ] Mise à jour depuis l'appli (première fois avec 0.1.0 → 0.1.1) : téléchargement, moteur relancé
+- [ ] SmartScreen à la première installation
 
 Le reste :
 

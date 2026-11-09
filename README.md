@@ -13,6 +13,13 @@ Le but : tout ce que fait un Stream Deck ou Logitech G HUB, molettes comprises, 
 | Écran | nice!view, affiche le profil actif (numéro ou tag de 3 lettres) |
 | Cerveau | nRF52840 (SuperMini), firmware ZMK |
 
+## Installer
+
+1. Télécharger `NULL-CONTROL_<version>_x64-setup.exe` sur la [page des versions](https://github.com/Telooss/NULL-PAD/releases/latest) et le lancer.
+2. La première fois, Windows SmartScreen peut avertir (pas de certificat de signature payant) : « Informations complémentaires » puis « Exécuter quand même ».
+
+L'installation se fait pour l'utilisateur courant, sans droits administrateur. Ensuite nullctl se met à jour tout seul. Détails : [ui/README.md](ui/README.md#installation-et-mises-à-jour).
+
 ## Ce que fait le logiciel
 
 Un **profil** = une couche du firmware. Dans chaque profil, une touche est soit **native** (vraie touche clavier, marche partout), soit **action** : elle envoie un code HID réservé que le moteur capte et transforme en action.
@@ -25,6 +32,8 @@ Un **profil** = une couche du firmware. Dans chaque profil, une touche est soit 
 | Firmware ZMK (profils, codes action, tag sur l'écran) | ✅ compile (local, WSL), à valider sur le vrai pad |
 | Écriture dans le pad depuis l'appli (ZMK Studio RPC) | ✅ faite, à valider sur le vrai pad |
 | Interface NULL/CONTROL (rendu 3D du pad, esthétique terminal hacktiviste Y2K, violet) | ✅ faite, à valider sur le vrai pad |
+| Installeur et mise à jour automatique | ✅ fait, à valider (première publication) |
+| Mise à jour du firmware depuis nullctl | prévu (amélioration) |
 
 ## Compiler et lancer
 
@@ -57,3 +66,5 @@ docs/superpowers/plans/         plans d'implémentation et suivi
 - [Conception de l'interface](docs/superpowers/specs/2026-11-07-interface-design.md) et [son README](ui/README.md)
 - [Écriture dans le pad : conception](docs/superpowers/specs/2026-11-08-ecriture-pad-design.md) et [plan](docs/superpowers/plans/2026-11-08-ecriture-pad.md)
 - [Moteur : usage, config, codes HID](engine/README.md)
+- [Installeur et mise à jour : conception](docs/superpowers/specs/2026-11-09-installeur-design.md) et [plan](docs/superpowers/plans/2026-11-09-installeur.md)
+- [Publier une version](docs/RELEASE.md)

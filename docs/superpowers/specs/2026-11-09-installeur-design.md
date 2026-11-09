@@ -13,7 +13,7 @@ On peut donner NULL/CONTROL à quelqu'un sans qu'il touche à GitHub ni à Rust.
 
 ### Installeur
 - Installeur Windows NSIS, en français, `NULL-CONTROL_<version>_x64-setup.exe`.
-- Installation **pour l'utilisateur courant**, dans `%LOCALAPPDATA%\Programs\NULL-CONTROL`. Pas de droits administrateur, ni pour l'installation ni pour les mises à jour.
+- Installation **pour l'utilisateur courant**, dans `%LOCALAPPDATA%\NULL-CONTROL` (dossier imposé par Tauri). Pas de droits administrateur, ni pour l'installation ni pour les mises à jour.
 - Un raccourci dans le menu Démarrer.
 - Il contient `nullctl.exe` (l'interface) et `nullctl-engine.exe` (le moteur), dans le même dossier. C'est déjà là que l'interface cherche le moteur (`settings::engine_exe`).
 - **Désinstallation** :
