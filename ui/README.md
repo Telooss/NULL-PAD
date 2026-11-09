@@ -67,8 +67,7 @@ Une touche est soit **native** (vraie touche clavier, marche sans logiciel), soi
 - Changements non enregistrés faits dans ZMK Studio : nullctl refuse d'écrire et propose de les abandonner.
 - Keymap modifié depuis la lecture : nullctl propose « Recharger ».
 
-**Sans le pad**, les touches natives sont en lecture seule. Les légendes viennent de la dernière lecture, gardée dans `%APPDATA%
-ullctl\pad-cache.json`. Créer ou supprimer un profil ne touche alors que la config, et la pastille passe à « Pad pas à jour ».
+**Sans le pad**, les touches natives sont en lecture seule. Les légendes viennent de la dernière lecture, gardée dans `%APPDATA%\nullctl\pad-cache.json`. Créer ou supprimer un profil ne touche alors que la config, et la pastille passe à « Pad pas à jour ».
 
 **ZMK Studio** reste utilisable, mais pas en même temps que nullctl : un seul programme à la fois peut parler au pad.
 
