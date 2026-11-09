@@ -243,6 +243,7 @@ async function commit(follow = true) {
     const re = await padFlow.onPadError(r);
     if (re && draft) {
       padEdit = { expected: re.model, target: structuredClone(re.model), maxLen: re.max_name_len };
+      if (draft.get().tag !== profileOf(cfg, profileId)?.tag) padEdit.target = renameLayer(padEdit.target, profileId, draft.get().tag, padEdit.maxLen);
       // Les actions posees sur des touches redevenues natives ne pourraient plus s'enregistrer.
       const lost = draft.get().bindings.filter((b) => !isAction(re.model, profileId, b.input));
       for (const b of lost) draft.set(b.input, b.trigger, null);
@@ -301,11 +302,12 @@ shell.onSlot(async (id) => {
 function applyMeta() {
   if (!draft) return;
   const cur = draft.get();
+  const before = cur.tag;
   const tag = cleanTag(tagIn.value);
   if (tagIn.value !== tag) tagIn.value = tag;
   tagIn.toggleAttribute('aria-invalid', tag.length !== 3);
   draft.setProfileMeta({ name: nameIn.value.trim() || cur.name, tag: tag.length === 3 ? tag : cur.tag });
-  if (padEdit) padEdit.target = renameLayer(padEdit.target, profileId, draft.get().tag, padEdit.maxLen); // l'ecran du pad affiche le tag
+  if (padEdit && cur.tag !== before) padEdit.target = renameLayer(padEdit.target, profileId, cur.tag, padEdit.maxLen); // l'ecran du pad affiche le tag
   renderBar();
   refreshLcd();
 }
@@ -316,15 +318,25 @@ tagIn.addEventListener('blur', () => { if (draft) { tagIn.value = draft.get().ta
 
 // ── Creer / supprimer : ecriture immediate (validation, enregistrement, evenement du moteur), jamais avec un brouillon modifie ──
 // -> true si ecrit ; sinon un toast dit pourquoi et rien n'a change.
-// padOp (profils) : async () -> { expected, target } a ecrire d'abord, ou null (pas de pad : config seule, « Pad pas à jour »).
-async function writeNow(next, padOp = null) {
+// layer (profils) : { id, bindings(model) -> PadBinding[], name } : la couche est ecrite dans le pad d'abord.
+// Config validee avant de toucher au pad ; pad absent -> config seule et « Pad pas à jour » ; pad refuse ou annule -> rien.
+async function writeNow(next, layer = null) {
   if (saving) return false;
   saving = true;
   panelEl.inert = true;
   let r;
   let padW = null;
   try {
-    padW = padOp && (await padOp().catch(() => null));
+    if (layer) {
+      try {
+        await cfgCalls.validate(JSON.stringify(next));
+      } catch (e) {
+        toast(app, `Config invalide : ${e}`);
+        return false;
+      }
+      padW = await padLayer(layer);
+      if (padW === false) return false;
+    }
     r = await saveFlow({
       json: JSON.stringify(next),
       ...cfgCalls,
@@ -341,7 +353,7 @@ async function writeNow(next, padOp = null) {
     toast(app, `Pad non écrit, rien n’a changé : ${r.error}`);
     return false;
   }
-  if (padOp && !padW) padFlow.markStale();
+  if (layer && !padW) padFlow.markStale(layer.id);
   if (r.state === 'invalid' || r.state === 'rejected') {
     const why = r.state === 'rejected' ? `Refusé par le moteur : ${r.error}` : r.write ? `Écriture impossible : ${r.error}` : `Config invalide : ${r.error}`;
     toast(app, r.padUpdated && r.state === 'invalid' ? `Pad mis à jour, config non enregistrée : ${r.error}` : why);
@@ -371,11 +383,18 @@ shell.onSettings(() => {
   settings.open();
 });
 
-// Couche p du pad pour une operation sur les profils (lecture avec M1 + M3 si besoin) -> { expected, target } ou null.
-async function padLayer(p, bindingsOf, name) {
-  const e = await padFlow.edit();
-  if (!e?.expected.layers[p - 1]) return null;
-  return { expected: e.expected, target: withLayer(e.expected, p, await bindingsOf(e.expected), name.slice(0, e.maxLen)) };
+// Couche du pad pour une operation sur les profils (lecture avec M1 + M3 si besoin) -> { expected, target } ;
+// null : pas de pad (config seule) ; false : pad occupe, refuse ou annule (toast affiche, on n'ecrit rien).
+async function padLayer({ id, bindings, name }) {
+  const e = await padFlow.edit('rien n’a été modifié', 'Annuler');
+  if (!e) return e;
+  if (!e.expected.layers[id - 1]) return null;
+  try {
+    return { expected: e.expected, target: withLayer(e.expected, id, await bindings(e.expected), name.slice(0, e.maxLen)) };
+  } catch (err) {
+    toast(app, `Pad non lu (${err}) : rien n’a été modifié`);
+    return false;
+  }
 }
 
 async function newProfile(want) {
@@ -397,8 +416,8 @@ async function newProfile(want) {
   if (!out || draft) return;
   const next = withNewProfile(cfg, { name: out.name, tag: out.tag, copyFrom: out.copy ? fromId : undefined, want: id });
   const newId = next.profiles.find((p) => !profileOf(cfg, p.id)).id;
-  const layer = (m) => (out.copy ? copyLayer(m.layers[fromId - 1].bindings, fromId, newId) : invoke('pad_default_layer', { profile: newId }));
-  if (!(await writeNow(next, () => padLayer(newId, layer, out.tag)))) return;
+  const bindings = (m) => (out.copy ? copyLayer(m.layers[fromId - 1].bindings, fromId, newId) : invoke('pad_default_layer', { profile: newId }));
+  if (!(await writeNow(next, { id: newId, bindings, name: out.tag }))) return;
   profileId = newId;
   renderBar();
   refreshPad();
@@ -413,7 +432,7 @@ async function deleteProfile(id) {
   if (draft && !(await leaveDraft(false))) return;
   const c = await confirmBox(app, { title: 'Supprimer le profil', text: `Supprimer le profil ${p.name} (${p.tag}) ? Ses actions seront perdues.`,
     buttons: [['delete', 'Supprimer'], ['stay', 'Annuler', true]] });
-  const reset = () => padLayer(id, () => invoke('pad_default_layer', { profile: id }), `P0${id}`);
+  const reset = { id, bindings: () => invoke('pad_default_layer', { profile: id }), name: `P0${id}` };
   if (c !== 'delete' || draft || creating || !(await writeNow(withoutProfile(cfg, id), reset))) return;
   if (!profileOf(cfg, profileId)) profileId = 1;
   if (!profileOf(cfg, padProfile)) padProfile = 1;

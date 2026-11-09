@@ -14,9 +14,9 @@ export function h(tag, props = {}, ...kids) {
   for (const c of kids.flat()) if (c != null && c !== false) e.append(c);
   return e;
 }
-const icon = (name) => h('i', { 'data-lucide': name });
+export const icon = (name) => h('i', { 'data-lucide': name });
 const iconBtn = (name, title, onclick) => h('button', { class: 'nc-btn nc-btn-sm', title, 'aria-label': title, onclick }, icon(name));
-const fieldBox = (label, ...kids) => h('div', { class: 'nc-field' }, h('span', { class: 'nc-label' }, label), ...kids);
+export const fieldBox = (label, ...kids) => h('div', { class: 'nc-field' }, h('span', { class: 'nc-label' }, label), ...kids);
 const base = (p) => p.split(/[\\/]/).pop();
 
 // ctx : { sounds() -> SoundDef[], pickFile({filters}) -> Promise<chemin|null> }

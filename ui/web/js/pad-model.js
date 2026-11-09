@@ -132,3 +132,18 @@ export function groupCatalog(catalog, query = '') {
   }
   return [...out];
 }
+
+// Profils dont la couche differe entre deux keymaps (couches ecrites).
+export const changedProfiles = (a, b) =>
+  b.layers.map((l, i) => (JSON.stringify(l) !== JSON.stringify(a?.layers[i]) ? i + 1 : 0)).filter(Boolean);
+
+// Un seul nouvel essai quand Rust repond `busy` (port tenu par un pad_status en cours).
+export async function retryBusy(call, sleep) {
+  try {
+    return await call();
+  } catch (e) {
+    if (parseErr(e).code !== 'busy') throw e;
+    await sleep();
+    return call();
+  }
+}

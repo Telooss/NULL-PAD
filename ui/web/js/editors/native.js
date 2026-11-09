@@ -1,10 +1,8 @@
 // Famille « Touche native » (pad modifiable) : touche en cours et selecteur du catalogue HID.
 // Tout texte venant du pad ou du catalogue passe par textContent (h()).
-import { h } from './render.js';
+import { h, icon, fieldBox } from './render.js';
 import { MODS, groupCatalog, nativeOf, usageOfCode, padLegend } from '../pad-model.js';
 
-const icon = (name) => h('i', { 'data-lucide': name });
-const fieldBox = (label, ...kids) => h('div', { class: 'nc-field' }, h('span', { class: 'nc-label' }, label), ...kids);
 const wrapRow = (kids) => h('div', { class: 'nc-row', style: 'flex-wrap:wrap;gap:4px' }, kids);
 
 export function describeNative(b) {
@@ -40,8 +38,12 @@ export function nativePicker({ current, catalog, onPick, onCancel }) {
   };
   const search = h('input', { class: 'nc-input', type: 'search', placeholder: 'Chercher une touche', 'aria-label': 'Chercher une touche', oninput: () => fill(search.value) });
 
-  // Capture : une seule touche (les modificateurs tenus comptent), Tab compris.
+  // Capture : une seule touche (les modificateurs tenus comptent), Tab compris ; Echap annule.
+  // Ecoute en phase de capture sur le document : passe avant les champs (recherche) et les arrete.
+  let armed = false;
   const cap = h('button', { class: 'nc-btn', onclick: () => {
+    if (armed) return;
+    armed = true;
     cap.lastChild.textContent = 'Appuie sur une touche…';
     const key = (e) => {
       if (!cap.isConnected) { document.removeEventListener('keydown', key, true); return; } // panneau redessine
@@ -50,6 +52,8 @@ export function nativePicker({ current, catalog, onPick, onCancel }) {
       e.preventDefault();
       e.stopPropagation();
       document.removeEventListener('keydown', key, true);
+      armed = false;
+      if (e.key === 'Escape') { cap.lastChild.textContent = 'Capturer'; return; }
       const entry = catalog.find((k) => k.usage === usage);
       if (!entry) { cap.lastChild.textContent = 'Touche inconnue'; return; }
       onPick(nativeOf(entry, [e.ctrlKey && 'ctrl', e.shiftKey && 'shift', e.altKey && 'alt', e.metaKey && 'win'].filter(Boolean)));

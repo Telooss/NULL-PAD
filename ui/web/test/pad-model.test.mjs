@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   INPUTS, isAction, padLegend, padNatives, canBind, setNative, setAction, renameLayer, withLayer, copyLayer,
-  parseErr, samePad, pillState, nativeOf, usageOfCode, groupCatalog,
+  parseErr, samePad, pillState, nativeOf, usageOfCode, groupCatalog, changedProfiles, retryBusy,
 } from '../js/pad-model.js';
 import { createDraft } from '../js/draft.js';
 import { legendsFor, panelModel } from '../js/view.js';
@@ -140,4 +140,22 @@ test('groupCatalog filters by label or group and keeps group order', () => {
   assert.deepEqual(groupCatalog(cat, '1').map(([g]) => g), ['Clavier', 'Pavé numérique']);
   assert.deepEqual(groupCatalog(cat, 'entree').map(([, ks]) => ks[0].usage), [2]);
   assert.deepEqual(groupCatalog(cat, 'pavé').map(([g]) => g), ['Pavé numérique']);
+});
+
+test('changedProfiles lists the written layers', () => {
+  const a = model();
+  assert.deepEqual(changedProfiles(a, structuredClone(a)), []);
+  const b = renameLayer(setAction(a, 1, 'K04'), 3, 'JEU', 16);
+  assert.deepEqual(changedProfiles(a, b), [1, 3]);
+});
+
+test('retryBusy: one retry on busy only', async () => {
+  let n = 0;
+  const slept = [];
+  const sleep = async () => { slept.push(1); };
+  assert.equal(await retryBusy(async () => (n++ ? 'ok' : Promise.reject('busy: Pad occupé')), sleep), 'ok');
+  assert.equal(slept.length, 1);
+  await assert.rejects(retryBusy(async () => { throw 'busy: Pad occupé'; }, sleep), /busy/);
+  await assert.rejects(retryBusy(async () => { throw 'locked: x'; }, sleep), /locked/);
+  assert.equal(slept.length, 2);
 });
