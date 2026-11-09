@@ -30,7 +30,7 @@ function Set-FirstMatch([string]$Path, [string]$Pattern, [string]$Version) {
 function Set-Versions([string]$Root, [string]$Version) {
     Set-FirstMatch (Join-Path $Root 'ui\tauri.conf.json') '(?m)^(\s*"version"\s*:\s*")[^"]*(")' $Version
     foreach ($f in 'ui\Cargo.toml', 'engine\Cargo.toml') {
-        Set-FirstMatch (Join-Path $Root $f) '(?m)^(version\s*=\s*")[^"]*(")' $Version
+        Set-FirstMatch (Join-Path $Root $f) '(?m)(^\[package\]\r?\n(?:(?!\[)[^\r\n]*\r?\n)*?version\s*=\s*")[^"]*(")' $Version
     }
 }
 
@@ -43,7 +43,7 @@ function New-LatestJson([string]$Version, [string]$Notes, [string]$Signature, [s
         version   = $Version
         notes     = $Notes
         pub_date  = $Date.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-        platforms = [ordered]@{ 'windows-x86_64' = [ordered]@{ signature = $Signature; url = $Url } }
+        platforms = [ordered]@{ 'windows-x86_64' = [ordered]@{ signature = $Signature.Trim(); url = $Url } }
     }
     return ($o | ConvertTo-Json -Depth 5)
 }
