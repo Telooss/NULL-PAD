@@ -1,29 +1,45 @@
 // Pad (ZMK Studio) cote interface : pastille, keymap connue, lecture avec deverrouillage M1 + M3, ecriture pour saveFlow.
 // Le metier pur est dans pad-model.js ; ici, les commandes Tauri et les boites de dialogue.
 import { confirmBox, modalOpen } from './config-mode.js';
-import { parseErr, pillState, changedProfiles, retryBusy } from './pad-model.js';
+import { parseErr, pillState, changedProfiles, retryBusy, padErrorText } from './pad-model.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// « Pad pas à jour » garde entre deux lancements (localStorage de la webview) ; illisible = rien en retard.
+const BEHIND_KEY = 'nullctl.padBehind';
+function loadBehind() {
+  try {
+    const v = JSON.parse(localStorage.getItem(BEHIND_KEY) ?? '{}');
+    return { profiles: Array.isArray(v.profiles) ? v.profiles.filter(Number.isInteger) : [], config: v.config === true };
+  } catch {
+    return { profiles: [], config: false };
+  }
+}
 
 // ctx : { invoke, listen, app, shell, toast(text), onModel(model) } — onModel : la keymap connue a change (legendes).
 export function createPadFlow({ invoke, listen, app, shell, toast, onModel }) {
   let model = null; // derniere keymap connue (cache, lecture ou ecriture)
   let status = null; // dernier pad_status
-  const padBehind = new Set(); // profils dont la couche n'a pas suivi une operation faite sans le pad
-  let configBehind = false; // pad ecrit, config pas enregistree ensuite
+  const saved = loadBehind();
+  const padBehind = new Set(saved.profiles); // profils dont la couche n'a pas suivi une operation faite sans le pad
+  let configBehind = saved.config; // pad ecrit, config pas enregistree ensuite
   let pending = 0; // commandes du pad en cours
-  let polling = null; // pad_status en cours : il tient le port cote Rust
+  let polling = null; // pad_status en cours : il prend un instant le verrou cote Rust
   let unlock = null; // boite « Appuie sur M1 + M3 » ouverte
 
-  const pill = () => shell.setPad(pillState(status, padBehind.size > 0 || configBehind));
+  const pill = () => {
+    try { localStorage.setItem(BEHIND_KEY, JSON.stringify({ profiles: [...padBehind], config: configBehind })); } catch { /* stockage indisponible */ }
+    shell.setPad(pillState(status, padBehind.size > 0 || configBehind, !!unlock));
+  };
   const setModel = (m) => { model = m; onModel(m); };
 
   // Rust attend M1 + M3 : boite annulable, fermee quand la commande se termine.
   listen('pad-unlock-needed', () => {
     if (!pending || unlock || modalOpen()) return;
     unlock = confirmBox(app, { title: 'Pad verrouillé', text: 'Appuie sur M1 + M3 pour déverrouiller le pad.', buttons: [['cancel', 'Annuler']] });
-    unlock.then((v) => { unlock = null; if (v === 'cancel') invoke('pad_cancel_unlock').catch(() => {}); });
+    unlock.then((v) => { unlock = null; pill(); if (v === 'cancel') invoke('pad_cancel_unlock').catch(() => {}); });
+    pill();
   });
+  listen('pad-unlocked', () => unlock?.close('done')); // M1 + M3 appuyes : la boite part tout de suite
 
   // Attend la sonde en cours (sinon `busy`), puis un nouvel essai si le port est encore tenu.
   async function run(cmd, args) {
@@ -122,7 +138,7 @@ export function createPadFlow({ invoke, listen, app, shell, toast, onModel }) {
     // -> nouvelle lecture { model, max_name_len } si l'utilisateur a recharge, sinon null.
     async onPadError(r) {
       if (r.code !== 'changed-elsewhere') {
-        toast(`Pad non écrit, rien n’a été enregistré : ${r.error}`);
+        toast(padErrorText(r));
         return null;
       }
       const c = await confirmBox(app, { title: 'Pad modifié ailleurs', text: 'Le pad a changé depuis sa lecture. Recharger perd les changements du pad ; le brouillon de la config est gardé.',

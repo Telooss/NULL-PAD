@@ -61,7 +61,11 @@ fn decode_one(b: &keymap::BehaviorBinding, behaviors: &HashMap<u32, String>) -> 
         Some(KEY_PRESS) => {
             // Usage brut : une action ne porte jamais de modificateurs.
             let (page, id) = (b.param1 >> 16, b.param1 & 0xFFFF);
-            if page == CONSUMER_PAGE && (ACT_BASE..ACT_BASE + 0x100).contains(&id) {
+            // 29 positions par tranche de 32 : 29..31 ne sont pas des actions.
+            if page == CONSUMER_PAGE
+                && (ACT_BASE..ACT_BASE + 0x100).contains(&id)
+                && (id - ACT_BASE) % ACT_SPAN < POSITIONS as u32
+            {
                 let n = id - ACT_BASE;
                 PadBinding::Action {
                     profile: (n / ACT_SPAN + 1) as u8,
@@ -274,6 +278,14 @@ mod tests {
         assert!(
             matches!(&m.layers[0].bindings[23], PadBinding::Native { label, .. } if label == "Volume +")
         );
+        // Tranche du profil 1, position 29 : hors des 29 entrées, donc native.
+        let kp = *names().iter().find(|(_, n)| *n == KEY_PRESS).unwrap().0;
+        let b = keymap::BehaviorBinding {
+            behavior_id: kp as i32,
+            param1: (CONSUMER_PAGE << 16) | (ACT_BASE + 29),
+            param2: 0,
+        };
+        assert!(matches!(decode_one(&b, &names()), PadBinding::Native { .. }));
     }
 
     #[test]

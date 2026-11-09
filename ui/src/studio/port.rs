@@ -20,8 +20,10 @@ pub fn find_pad_port() -> Option<String> {
 }
 
 pub fn open_pad(name: &str) -> serialport::Result<Box<dyn Port>> {
+    // CDC-ACM de Zephyr peut retenir l'émission tant que DTR n'est pas mis (Web Serial / ZMK Studio le met).
     let port = serialport::new(name, 115_200)
         .timeout(Duration::from_millis(100))
+        .dtr_on_open(true)
         .open()?;
     Ok(Box::new(port))
 }

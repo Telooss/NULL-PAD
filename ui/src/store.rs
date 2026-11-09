@@ -30,7 +30,7 @@ pub fn validate(json: &str, pad: Option<&PadModel>) -> Result<(), String> {
             .find(|b| is_native(pad, p.id, b.input.0))
         {
             return Err(format!(
-                "touche native du firmware : {} (profil {}), modifiable plus tard depuis le pad",
+                "touche native dans le pad : {} (profil {}), repasse-la en action pour la lier",
                 b.input.name(),
                 p.id
             ));

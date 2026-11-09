@@ -26,15 +26,20 @@ pub fn err(e: StudioError) -> String {
     format!("{code}: {e}")
 }
 
+/// Événements vers l'interface : `UNLOCK_NEEDED` avant l'attente de M1 + M3, `UNLOCKED` dès qu'elle aboutit.
+pub const UNLOCK_NEEDED: &str = "pad-unlock-needed";
+pub const UNLOCKED: &str = "pad-unlocked";
+
 fn ensure_unlocked<P: Port>(
     c: &mut Client<P>,
     wait: Duration,
     cancel: &AtomicBool,
-    on_unlock_needed: impl FnOnce(),
+    mut notify: impl FnMut(&'static str),
 ) -> Result<(), String> {
     if c.lock_state().map_err(err)? {
-        on_unlock_needed();
+        notify(UNLOCK_NEEDED);
         c.wait_unlocked(wait, cancel).map_err(err)?;
+        notify(UNLOCKED);
     }
     Ok(())
 }
@@ -69,10 +74,10 @@ pub fn read<P: Port>(
     cache_path: &Path,
     wait: Duration,
     cancel: &AtomicBool,
-    on_unlock_needed: impl FnOnce(),
+    notify: impl FnMut(&'static str),
 ) -> Result<PadRead, String> {
     let serial = serial(c)?;
-    ensure_unlocked(c, wait, cancel, on_unlock_needed)?;
+    ensure_unlocked(c, wait, cancel, notify)?;
     check_clean(c)?;
     let r = snapshot(c)?;
     store(cache_path, &serial, &r);
@@ -113,10 +118,10 @@ pub fn write<P: Port>(
     target: &PadModel,
     wait: Duration,
     cancel: &AtomicBool,
-    on_unlock_needed: impl FnOnce(),
+    notify: impl FnMut(&'static str),
 ) -> Result<PadRead, String> {
     let serial = serial(c)?;
-    ensure_unlocked(c, wait, cancel, on_unlock_needed)?;
+    ensure_unlocked(c, wait, cancel, notify)?;
     check_clean(c)?;
     let behaviors = c.behaviors().map_err(err)?;
     let km = c.keymap().map_err(err)?;
@@ -175,9 +180,9 @@ pub fn discard_foreign<P: Port>(
     c: &mut Client<P>,
     wait: Duration,
     cancel: &AtomicBool,
-    on_unlock_needed: impl FnOnce(),
+    notify: impl FnMut(&'static str),
 ) -> Result<(), String> {
-    ensure_unlocked(c, wait, cancel, on_unlock_needed)?;
+    ensure_unlocked(c, wait, cancel, notify)?;
     c.discard().map_err(err)
 }
 
@@ -215,7 +220,7 @@ mod tests {
     }
 
     fn read_ok(c: &mut Client<FakePad>, p: &Path) -> PadRead {
-        read(c, p, W, &AtomicBool::new(false), || {}).unwrap()
+        read(c, p, W, &AtomicBool::new(false), |_| {}).unwrap()
     }
 
     fn do_write(
@@ -224,7 +229,7 @@ mod tests {
         e: &PadModel,
         t: &PadModel,
     ) -> Result<PadRead, String> {
-        write(c, p, e, t, W, &AtomicBool::new(false), || {})
+        write(c, p, e, t, W, &AtomicBool::new(false), |_| {})
     }
 
     #[test]
@@ -234,9 +239,9 @@ mod tests {
         pad.unlock_after = Some((3, false));
         let mut c = client(pad);
         let p = tmp("unlock");
-        let mut calls = 0;
-        let r = read(&mut c, &p, W, &AtomicBool::new(false), || calls += 1).unwrap();
-        assert_eq!(calls, 1);
+        let mut events = Vec::new();
+        let r = read(&mut c, &p, W, &AtomicBool::new(false), |e| events.push(e)).unwrap();
+        assert_eq!(events, [UNLOCK_NEEDED, UNLOCKED]);
         assert_eq!(r.model.layers.len(), 8);
         assert_eq!(r.max_name_len, 20);
         let cached = cache::load(&p, Some("deadbeef")).unwrap();
@@ -250,7 +255,7 @@ mod tests {
         pad.locked = true;
         let mut c = client(pad);
         let cancel = AtomicBool::new(true);
-        let e = read(&mut c, &tmp("cancel"), W, &cancel, || {}).unwrap_err();
+        let e = read(&mut c, &tmp("cancel"), W, &cancel, |_| {}).unwrap_err();
         assert!(e.starts_with("cancelled: "), "{e}");
     }
 
@@ -260,12 +265,12 @@ mod tests {
         pad.unsaved = true;
         let mut c = client(pad);
         let p = tmp("foreign");
-        let e = read(&mut c, &p, W, &AtomicBool::new(false), || {}).unwrap_err();
+        let e = read(&mut c, &p, W, &AtomicBool::new(false), |_| {}).unwrap_err();
         assert!(e.starts_with("foreign-unsaved: "), "{e}");
         let m = model::decode(&c.keymap().unwrap(), &c.behaviors().unwrap());
         let e = do_write(&mut c, &p, &m, &m).unwrap_err();
         assert!(e.starts_with("foreign-unsaved: "), "{e}");
-        discard_foreign(&mut c, W, &AtomicBool::new(false), || {}).unwrap();
+        discard_foreign(&mut c, W, &AtomicBool::new(false), |_| {}).unwrap();
         assert!(!c.port_mut().unsaved);
     }
 
@@ -353,7 +358,7 @@ mod tests {
     fn failure_mid_write_discards() {
         let mut c = Client::new(Flaky(FakePad::new(), true, false, false));
         let p = tmp("mid");
-        let r = read(&mut c, &p, W, &AtomicBool::new(false), || {}).unwrap();
+        let r = read(&mut c, &p, W, &AtomicBool::new(false), |_| {}).unwrap();
         let before = c.port_mut().0.keymap.clone();
         let mut t = r.model.clone();
         t.layers[0].bindings[4] = PadBinding::Action {
@@ -364,7 +369,7 @@ mod tests {
             profile: 1,
             input: 5,
         };
-        let e = write(&mut c, &p, &r.model, &t, W, &AtomicBool::new(false), || {}).unwrap_err();
+        let e = write(&mut c, &p, &r.model, &t, W, &AtomicBool::new(false), |_| {}).unwrap_err();
         assert!(e.starts_with("disconnected: "), "{e}");
         let pad = &c.port_mut().0;
         assert!(!pad.unsaved);
@@ -375,13 +380,13 @@ mod tests {
     fn failed_reread_after_save_is_still_ok() {
         let mut c = Client::new(Flaky(FakePad::new(), false, true, false));
         let p = tmp("reread");
-        let r = read(&mut c, &p, W, &AtomicBool::new(false), || {}).unwrap();
+        let r = read(&mut c, &p, W, &AtomicBool::new(false), |_| {}).unwrap();
         let mut t = r.model.clone();
         t.layers[0].bindings[4] = PadBinding::Action {
             profile: 1,
             input: 4,
         };
-        let out = write(&mut c, &p, &r.model, &t, W, &AtomicBool::new(false), || {}).unwrap();
+        let out = write(&mut c, &p, &r.model, &t, W, &AtomicBool::new(false), |_| {}).unwrap();
         assert_eq!(out.model, t);
         assert_eq!(out.max_name_len, r.max_name_len);
         assert_eq!(cache::load(&p, None).unwrap().model, r.model); // cache non mis à jour

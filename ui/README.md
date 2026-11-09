@@ -110,6 +110,8 @@ OBS : la scène et la source sont du texte libre (lire la liste depuis OBS n'est
 - [ ] Pad débranché pendant l'écriture
 - [ ] Changement fait dans ZMK Studio puis enregistrement dans nullctl (refusé)
 - [ ] Reverrouillage après 10 min
+- [ ] Lecture puis Enregistrer sans redemander M1 + M3 (le pad ne se reverrouille pas entre deux ouvertures du port)
+- [ ] nullctl ouvert pendant le test des 10 min
 
 Le reste :
 

@@ -85,13 +85,38 @@ export function parseErr(e) {
 
 export const samePad = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
-// Pastille : stale (operation faite sans le pad) passe avant le reste.
-export function pillState(status, stale) {
+// Pastille : stale (pad ou config en retard) passe avant le reste. Le statut ne sonde plus le pad (port jamais ouvert) :
+// branche = « modifiable » suppose, « verrouille » seulement pendant l'attente de M1 + M3.
+export function pillState(status, stale, unlocking = false) {
   if (stale) return 'stale';
   if (!status) return 'absent';
   if (status.busy) return 'busy';
   if (!status.present) return 'absent';
-  return status.locked ? 'locked' : 'editable';
+  return unlocking ? 'locked' : 'editable';
+}
+
+// Liaisons de la config sur des touches natives dans le pad (changees ailleurs, ou brouillon abandonne apres
+// « Pad mis à jour, config non enregistrée ») : Rust refuserait toute la config, on les retire.
+// -> { config (copie), removed: [{ profile, input }] } (une entree par touche).
+export function withoutOrphans(config, model) {
+  const out = structuredClone(config);
+  const removed = [];
+  for (const p of out.profiles) {
+    if (!model.layers[p.id - 1]) continue;
+    const gone = new Set(p.bindings.filter((b) => !isAction(model, p.id, b.input)).map((b) => b.input));
+    for (const input of gone) removed.push({ profile: p.id, input });
+    p.bindings = p.bindings.filter((b) => !gone.has(b.input));
+  }
+  return { config: out, removed };
+}
+
+// Message d'un pad qui refuse l'ecriture (la config n'est pas ecrite). Coupure pendant l'ecriture : le pad
+// peut garder des changements partiels, proposes a l'annulation (changements non enregistres) au prochain branchement.
+export function padErrorText(r) {
+  if (r.code === 'disconnected' || r.code === 'timeout') {
+    return `Pad coupé pendant l’écriture (${r.error}) : il peut garder des changements partiels, nullctl proposera de les annuler au rebranchement. Config non enregistrée`;
+  }
+  return `Pad non écrit, rien n’a été enregistré : ${r.error}`;
 }
 
 // Modificateurs implicites ZMK (octet haut de l'usage) : LCTL 0x01, LSFT 0x02, LALT 0x04, LGUI 0x08.

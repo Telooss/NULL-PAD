@@ -9,7 +9,7 @@ export function refusal(target, profileId, natives, pad = null) {
   if (pad?.model) return 'Touche native du pad : branchez et déverrouillez le pad pour la modifier';
   if (/^M[123]$/.test(target)) return 'Touche de profil du firmware : non modifiable ici';
   if (target.startsWith('ENC_L_')) return 'Molette gauche du firmware : non modifiable ici';
-  return 'Touche native du firmware : modifiable plus tard depuis le pad';
+  return 'Touche native dans le pad : branchez le pad en USB pour la modifier';
 }
 
 // SoundDef d'un fichier audio, id tire du nom et rendu unique.

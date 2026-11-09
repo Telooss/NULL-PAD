@@ -12,7 +12,7 @@ import { createSettings } from './settings.js';
 import { initFx } from './fx.js';
 import { barSlots, nextFreeId, withNewProfile, withoutProfile, openCreate, openMenu, cleanTag, slotLabel, NAME_MAX } from './profiles.js';
 import { createPadFlow } from './pad-flow.js';
-import { isAction, setNative, setAction, renameLayer, withLayer, copyLayer, samePad } from './pad-model.js';
+import { isAction, setNative, setAction, renameLayer, withLayer, copyLayer, samePad, withoutOrphans, padErrorText } from './pad-model.js';
 
 const N = window.NullCtl;
 const app = document.getElementById('app');
@@ -97,6 +97,15 @@ function toNative(input, b) { padEdit.target = setNative(padEdit.target, draft, 
 function toAction(input) { padEdit.target = setAction(padEdit.target, profileId, input); refreshPad(); refreshPanel(); }
 const dirty = () => draft.dirty() || (!!padEdit && !samePad(padEdit.expected, padEdit.target));
 // Validation et ecriture de la config contre la keymap ecrite, ou la derniere connue (sinon la table du firmware).
+// Config ecrite contre la keymap `model` (ou la derniere connue) : les actions sur des touches natives dans le pad
+// ne peuvent plus se declencher et feraient refuser toute la config ; retirees, avec un toast (sauf quiet).
+function dropOrphans(next, model = padFlow.model(), quiet = false) {
+  if (!model) return next;
+  const { config, removed } = withoutOrphans(next, model);
+  // Apres le toast de l'enregistrement (qui le remplacerait sinon).
+  if (removed.length && !quiet) setTimeout(() => toast(app, `Actions retirées (touches natives dans le pad) : ${removed.map((x) => `P${x.profile} ${x.input}`).join(', ')}`), 1500);
+  return config;
+}
 const cfgCalls = {
   validate: (json, p) => invoke('validate_config', { json, pad: p ?? padFlow.model() }),
   save: (json, p) => invoke('save_config', { json, pad: p ?? padFlow.model() }),
@@ -217,7 +226,7 @@ async function commit(follow = true) {
   try {
     // Relue juste avant : les reglages ou autres profils modifies entre-temps sont gardes.
     try {
-      merged = mergeDraft(await invoke('get_config'), draft.get(), draft.soundChanges());
+      merged = dropOrphans(mergeDraft(await invoke('get_config'), draft.get(), draft.soundChanges()), padEdit?.target);
     } catch (e) {
       toast(app, `Config illisible, rien n’a été écrit : ${e?.message ?? e}`);
       return false;
@@ -329,7 +338,7 @@ async function writeNow(next, layer = null) {
   try {
     if (layer) {
       try {
-        await cfgCalls.validate(JSON.stringify(next));
+        await cfgCalls.validate(JSON.stringify(dropOrphans(next, undefined, true)));
       } catch (e) {
         toast(app, `Config invalide : ${e}`);
         return false;
@@ -337,6 +346,7 @@ async function writeNow(next, layer = null) {
       padW = await padLayer(layer);
       if (padW === false) return false;
     }
+    next = dropOrphans(next, padW?.target);
     r = await saveFlow({
       json: JSON.stringify(next),
       ...cfgCalls,
@@ -350,7 +360,7 @@ async function writeNow(next, layer = null) {
   }
   padFlow.settle(r);
   if (r.state === 'pad') {
-    toast(app, `Pad non écrit, rien n’a changé : ${r.error}`);
+    toast(app, padErrorText(r));
     return false;
   }
   if (layer && !padW) padFlow.markStale(layer.id);

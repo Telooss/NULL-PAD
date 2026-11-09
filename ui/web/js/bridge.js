@@ -94,13 +94,14 @@ if (!T && qs.get('pad')) {
       if (cancel) throw 'cancelled: Déverrouillage annulé';
     }
     locked = false;
+    emit('pad-unlocked', {});
   };
   const letters = Array.from({ length: 26 }, (_, i) => ({ usage: (7 << 16) | (4 + i), label: String.fromCharCode(65 + i), group: 'Clavier' }));
   const digits = Array.from({ length: 10 }, (_, i) => ({ usage: (7 << 16) | (0x1e + i), label: String((i + 1) % 10), group: 'Clavier' }));
   const pad = [...Array.from({ length: 9 }, (_, i) => kp(0x59 + i, String(i + 1))), kp(0x62, '0'), kp(0x58, 'Entrée'), kp(0x57, '+')].map((b) => ({ usage: b.usage, label: b.label, group: 'Pavé numérique' }));
   const media = [cc(0xe9, 'Volume +'), cc(0xea, 'Volume −'), cc(0xe2, 'Muet'), cc(0xcd, 'Lecture/Pause')].map((b) => ({ usage: b.usage, label: b.label, group: 'Média et volume' }));
   Object.assign(mock, {
-    pad_status: () => ({ present: !absent, locked: absent ? null : locked, serial: absent ? null : 'NP01', cache_at: null, busy: false }),
+    pad_status: () => ({ present: !absent, locked: null, serial: null, busy: false }), // enumeration seulement, comme Rust
     pad_cached: () => read(),
     pad_cancel_unlock: () => { cancel = true; },
     pad_read: async () => { present(); await unlock(); return read(); },
@@ -126,7 +127,7 @@ if (!T && qs.get('pad')) {
     const idx = (n) => (/^K\d\d$/.test(n) ? +n.slice(1) : 20 + I.indexOf(n));
     for (const p of m ? JSON.parse(json).profiles : []) {
       const b = p.bindings.find((x) => { const k = m.layers[p.id - 1]?.bindings[idx(x.input)]; return !(k?.kind === 'action' && k.profile === p.id && k.input === idx(x.input)); });
-      if (b) throw `touche native du firmware : ${b.input} (profil ${p.id}), modifiable plus tard depuis le pad`;
+      if (b) throw `touche native dans le pad : ${b.input} (profil ${p.id}), repasse-la en action pour la lier`;
     }
   };
 }

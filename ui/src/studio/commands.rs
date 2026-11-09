@@ -25,13 +25,15 @@ pub struct PadState {
     cancel: Arc<AtomicBool>,
 }
 
+/// Sondé toutes les 5 s par l'interface : énumération des ports seulement, le port n'est jamais ouvert
+/// (une requête RPC relancerait le minuteur de reverrouillage et gênerait ZMK Studio).
+/// `locked` et `serial` restent `None` : seules les commandes qui ouvrent le port les connaissent.
 #[derive(Serialize)]
 pub struct PadStatus {
     present: bool,
     locked: Option<bool>,
     serial: Option<String>,
-    cache_at: Option<u64>,
-    /// Une autre commande tient le port : le pad est là, on ne l'a pas sondé.
+    /// Une autre commande tient le port : le pad est là.
     busy: bool,
 }
 
@@ -67,41 +69,26 @@ fn run_on_port<T>(
     f(&mut c)
 }
 
-fn notify(app: &AppHandle) -> impl FnOnce() + '_ {
-    || {
-        let _ = app.emit("pad-unlock-needed", serde_json::json!({}));
+/// `service::UNLOCK_NEEDED` / `UNLOCKED` -> événement Tauri du même nom.
+fn notify(app: &AppHandle) -> impl FnMut(&'static str) + '_ {
+    |event| {
+        let _ = app.emit(event, serde_json::json!({}));
     }
 }
 
-#[tauri::command(async)]
+#[tauri::command(async)] // l'énumération des ports peut prendre quelques dizaines de ms
 pub fn pad_status(state: State<PadState>) -> PadStatus {
-    status_with(&state, || {
-        run_on_port(|c| Ok(service::status(c))).ok().flatten()
-    })
+    status_with(&state, || find_pad_port().is_some())
 }
 
-/// Prend le verrou une seule fois et le garde pendant `probe` (qui ne doit pas le reprendre) ; occupé : pas de sonde.
-fn status_with(state: &PadState, probe: impl FnOnce() -> Option<(bool, String)>) -> PadStatus {
-    let Some(_guard) = try_lock(state) else {
-        return PadStatus {
-            present: true,
-            locked: None,
-            serial: None,
-            cache_at: None,
-            busy: true,
-        };
-    };
-    let probe = probe();
-    let cache_at = probe
-        .as_ref()
-        .and_then(|(_, s)| cache::load(&cache::path(), Some(s)))
-        .map(|c| c.read_at);
+/// Occupé (une commande tient le port) : présent. Sinon, `present` vient de l'énumération des ports.
+fn status_with(state: &PadState, present: impl FnOnce() -> bool) -> PadStatus {
+    let busy = matches!(state.busy.try_lock(), Err(TryLockError::WouldBlock));
     PadStatus {
-        present: probe.is_some(),
-        locked: probe.as_ref().map(|(l, _)| *l),
-        serial: probe.map(|(_, s)| s),
-        cache_at,
-        busy: false,
+        present: busy || present(),
+        locked: None,
+        serial: None,
+        busy,
     }
 }
 
@@ -213,13 +200,21 @@ mod tests {
         drop(_held);
         assert!(cached_with(&state, &path, || Some((false, "bb".into()))).is_none());
         assert!(cached_with(&state, &path, || Some((false, "aa".into()))).is_some());
-        let s = status_with(&state, || Some((true, "aa".into())));
-        assert!(s.present && !s.busy && s.locked == Some(true));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Régression : le verrou est tenu pendant la sonde (une sonde qui le reprendrait verrait WouldBlock
-    /// et perdrait le numéro de série) ; la sonde réelle (`run_on_port`) ne le touche pas.
+    /// Le statut n'ouvre jamais le port : présence = énumération, ni verrou ni numéro de série.
+    #[test]
+    fn status_only_enumerates() {
+        let state = PadState::default();
+        let s = status_with(&state, || true);
+        assert!(s.present && !s.busy && s.locked.is_none() && s.serial.is_none());
+        assert!(!status_with(&state, || false).present);
+        assert!(try_lock(&state).is_some()); // le verrou n'est pas garde
+    }
+
+    /// Régression : le verrou est tenu pendant la sonde de `pad_cached` (une sonde qui le reprendrait verrait
+    /// WouldBlock et perdrait le numéro de série) ; la sonde réelle (`run_on_port`) ne le touche pas.
     #[test]
     fn lock_is_held_once_during_the_probe() {
         let state = PadState::default();
@@ -229,11 +224,6 @@ mod tests {
                 "verrou non tenu pendant la sonde"
             )
         };
-        let s = status_with(&state, || {
-            held(&state);
-            Some((false, "aa".into()))
-        });
-        assert!(s.present && !s.busy && s.serial.as_deref() == Some("aa"));
         let path = std::env::temp_dir().join("nullctl-cmd-absent-xyz.json");
         let probed = std::cell::Cell::new(false);
         assert!(cached_with(&state, &path, || {

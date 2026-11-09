@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   INPUTS, isAction, padLegend, padNatives, canBind, setNative, setAction, renameLayer, withLayer, copyLayer,
-  parseErr, samePad, pillState, nativeOf, usageOfCode, groupCatalog, changedProfiles, retryBusy,
+  parseErr, samePad, pillState, nativeOf, usageOfCode, groupCatalog, changedProfiles, retryBusy, withoutOrphans, padErrorText,
 } from '../js/pad-model.js';
 import { createDraft } from '../js/draft.js';
 import { legendsFor, panelModel } from '../js/view.js';
@@ -109,7 +109,6 @@ test('parseErr', () => {
 
 test('pillState', () => {
   assert.equal(pillState({ present: true, locked: false, busy: false }, false), 'editable');
-  assert.equal(pillState({ present: true, locked: true, busy: false }, false), 'locked');
   assert.equal(pillState({ present: false, locked: null, busy: false }, false), 'absent');
   assert.equal(pillState({ present: true, locked: null, busy: true }, false), 'busy');
   assert.equal(pillState(null, false), 'absent');
@@ -158,4 +157,35 @@ test('retryBusy: one retry on busy only', async () => {
   await assert.rejects(retryBusy(async () => { throw 'busy: Pad occupé'; }, sleep), /busy/);
   await assert.rejects(retryBusy(async () => { throw 'locked: x'; }, sleep), /locked/);
   assert.equal(slept.length, 2);
+});
+
+test('withoutOrphans removes config bindings on keys that are native in the pad', () => {
+  const m = model(); // P1 K04 native, P1 M1 profile_macro ; P2 K03 other
+  const c = { version: 1, profiles: [
+    { id: 1, name: 'A', tag: 'AAA', bindings: [
+      { input: 'K04', trigger: 'Press', action: { type: 'MicMute' } },
+      { input: 'K04', trigger: 'Hold', action: { type: 'MicMute' } },
+      { input: 'K11', trigger: 'Press', action: { type: 'MicMute' } }] },
+    { id: 2, name: 'B', tag: 'BBB', bindings: [{ input: 'K03', trigger: 'Press', action: { type: 'MicMute' } }] },
+  ] };
+  const orig = structuredClone(c);
+  const r = withoutOrphans(c, m);
+  assert.deepEqual(r.removed, [{ profile: 1, input: 'K04' }, { profile: 2, input: 'K03' }]);
+  assert.deepEqual(r.config.profiles[0].bindings.map((b) => b.input), ['K11']);
+  assert.deepEqual(r.config.profiles[1].bindings, []);
+  assert.deepEqual(c, orig);
+  assert.equal(withoutOrphans(r.config, m).removed.length, 0);
+});
+
+test('pillState: unlock wait shows locked, present otherwise editable', () => {
+  assert.equal(pillState({ present: true, locked: null, busy: false }, false, true), 'locked');
+  assert.equal(pillState({ present: true, locked: null, busy: false }, false, false), 'editable');
+  assert.equal(pillState({ present: true, locked: null, busy: false }, true, true), 'stale');
+});
+
+test('padErrorText: a cut during the write may leave partial changes', () => {
+  assert.match(padErrorText({ code: 'disconnected', error: 'x' }), /changements partiels/);
+  assert.match(padErrorText({ code: 'timeout', error: 'x' }), /changements partiels/);
+  assert.doesNotMatch(padErrorText({ code: 'timeout', error: 'x' }), /rien n’a été enregistré/);
+  assert.equal(padErrorText({ code: 'locked', error: 'Pad verrouillé' }), 'Pad non écrit, rien n’a été enregistré : Pad verrouillé');
 });
