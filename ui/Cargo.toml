@@ -13,12 +13,12 @@ name = "nullctl"
 path = "src/main.rs"
 
 [build-dependencies]
-tauri-build = "2.7"
+tauri-build = { version = "2.7", features = [] }
 prost-build = "0.14"
 protoc-bin-vendored = "3.3"
 
 [dependencies]
-tauri = "2.12"
+tauri = { version = "2.12", features = [] }
 tauri-plugin-dialog = "2.8"
 tauri-plugin-single-instance = "2.5"
 engine = { path = "../engine" }
