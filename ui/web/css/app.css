@@ -106,3 +106,10 @@ textarea.nc-input { resize: vertical; }
 .no-fx .nc-w98, .no-fx .nc-tape, .no-fx .nc-reg, .no-fx .nc-barcode, .no-fx .nc-star, .no-fx .cp-ghost { display: none !important; }
 .no-fx .nc-glitch, .no-fx .nc-glitch::after { animation: none !important; filter: none !important; }
 .no-fx .nc-glitch::after { display: none; }
+
+/* Mise a jour : nc-toast persistant, au-dessus des toasts ordinaires. */
+.nc-toast.nc-update { bottom: 84px; align-items: flex-start; width: min(560px, calc(100% - 32px)); }
+.nc-update .tx { display: grid; gap: 6px; flex: 1; min-width: 0; }
+.nc-update .notes, .nc-update .msg { font-size: 12px; color: var(--ink-muted); white-space: pre-line; max-height: 96px; overflow: auto; }
+.nc-update .msg:empty, .nc-update .notes:empty { display: none; }
+.nc-update .nc-slider output { width: auto; min-width: 44px; white-space: nowrap; }

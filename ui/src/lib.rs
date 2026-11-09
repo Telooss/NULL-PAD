@@ -4,6 +4,7 @@ pub mod pipes;
 pub mod settings;
 pub mod store;
 pub(crate) mod studio;
+pub mod update;
 
 use engine::config::{default_config, Config};
 use engine::ipc::Response;
@@ -107,6 +108,8 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_dialog::init())
+        // Config dans plugins.updater ; verifications et installation par update.rs.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(studio::commands::PadState::default())
         .invoke_handler(tauri::generate_handler![
             get_config,
@@ -129,7 +132,9 @@ pub fn run() {
             studio::commands::pad_write,
             studio::commands::pad_discard_foreign,
             studio::commands::hid_catalog,
-            studio::commands::pad_default_layer
+            studio::commands::pad_default_layer,
+            update::update_check,
+            update::update_install
         ])
         .setup(|app| {
             // Avant toute lecture de la config (comme le moteur).

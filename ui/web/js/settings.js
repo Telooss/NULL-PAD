@@ -13,6 +13,14 @@ const MIC_WARN = 'Via l’appli, le micro passe par NULL/CONTROL : il ajoute un 
 const icon = (n) => h('i', { 'data-lucide': n });
 const field = (label, ...kids) => h('div', { class: 'nc-field' }, h('span', { class: 'nc-label' }, label), ...kids);
 const note = (ic, ...kids) => h('div', { class: 'nc-note' }, icon(ic), h('span', {}, ...kids));
+// « Vérifier les mises à jour » : actif par défaut, gardé dans localStorage (indisponible : valable pour cette session).
+const UPDATE_KEY = 'nullctl.update.check';
+let updateOn = (() => { try { return localStorage.getItem(UPDATE_KEY) !== '0'; } catch { return true; } })();
+export const updateCheckOn = () => updateOn;
+const setUpdateCheck = (on) => { updateOn = on; try { localStorage.setItem(UPDATE_KEY, on ? '1' : '0'); } catch { /* stockage indisponible */ } };
+const check = (label, on, toggle) => h('div', { class: `nc-check${on ? ' is-on' : ''}`, role: 'checkbox', tabIndex: 0, 'aria-checked': String(on), onclick: toggle,
+  onkeydown: (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggle(); } } },
+  h('span', { class: 'box' }, on ? icon('check') : null), h('span', { class: 'tx' }, label));
 const LEAVE = { title: 'Changements non enregistrés', text: 'Les réglages ont des changements non enregistrés.',
   buttons: [['save', 'Enregistrer', true], ['discard', 'Abandonner'], ['stay', 'Rester']] };
 
@@ -104,21 +112,16 @@ export function createSettings(ctx) {
       note('info', 'Le test utilise les réglages enregistrés.'),
     ],
     midi: () => [text('Port MIDI', draft.midi, 'port'), tester('midi', 'test_midi'), note('info', 'Le test envoie un CC avec les réglages enregistrés.')],
-    start: () => {
-      const toggle = () => setAutostart(!env.autostart);
-      return [
-        h('div', { class: `nc-check${env.autostart ? ' is-on' : ''}`, role: 'checkbox', tabIndex: 0, 'aria-checked': String(env.autostart), onclick: toggle,
-          onkeydown: (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggle(); } } },
-        h('span', { class: 'box' }, env.autostart ? icon('check') : null), h('span', { class: 'tx' }, 'Lancer avec Windows')),
-        note('info', 'Appliqué tout de suite, sans « Enregistrer ».'),
-        h('div', { class: `nc-check${fxOff() ? ' is-on' : ''}`, role: 'checkbox', tabIndex: 0, 'aria-checked': String(fxOff()), onclick: toggleFx,
-          onkeydown: (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggleFx(); } } },
-        h('span', { class: 'box' }, fxOff() ? icon('check') : null), h('span', { class: 'tx' }, 'Couper les effets')),
-        note('info', 'Sans grain, trame, fenêtres du décor ni glitch. Appliqué tout de suite.'),
-        num('Appui long (ms)', draft.timing, 'hold_ms', TIMING_MIN, TIMING_MAX, clampTiming),
-        num('Double appui (ms)', draft.timing, 'double_ms', TIMING_MIN, TIMING_MAX, clampTiming),
-      ];
-    },
+    start: () => [
+      check('Lancer avec Windows', env.autostart, () => setAutostart(!env.autostart)),
+      note('info', 'Appliqué tout de suite, sans « Enregistrer ».'),
+      check('Couper les effets', fxOff(), toggleFx),
+      note('info', 'Sans grain, trame, fenêtres du décor ni glitch. Appliqué tout de suite.'),
+      check('Vérifier les mises à jour', updateCheckOn(), () => { setUpdateCheck(!updateCheckOn()); render(); }),
+      note('info', 'Au démarrage puis toutes les 6 h. Rien ne s’installe sans votre accord.'),
+      num('Appui long (ms)', draft.timing, 'hold_ms', TIMING_MIN, TIMING_MAX, clampTiming),
+      num('Double appui (ms)', draft.timing, 'double_ms', TIMING_MIN, TIMING_MAX, clampTiming),
+    ],
   };
 
   const toggleFx = () => { setFxOff(!fxOff()); render(); };

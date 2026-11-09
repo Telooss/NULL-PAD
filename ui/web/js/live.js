@@ -5,7 +5,7 @@ const N = window.NullCtl;
 
 // Une ligne dans la scene, 4 s (nc-toast du design system ; la nouvelle remplace l'ancienne).
 export function toast(app, text) {
-  app.querySelectorAll('.nc-toast').forEach((n) => n.remove());
+  app.querySelectorAll('.nc-toast:not(.nc-update)').forEach((n) => n.remove()); // le bandeau de mise a jour reste
   const t = document.createElement('div');
   t.className = 'nc-toast';
   t.innerHTML = '<i data-lucide="activity"></i><span></span>';

@@ -20,6 +20,8 @@ use windows::Win32::System::Threading::{
 };
 
 pub const ENGINE_EXE: &str = "nullctl-engine.exe";
+/// Erreur de `control` quand le pipe n'existe pas.
+pub const ENGINE_DOWN: &str = "moteur arrete";
 const TIMEOUT: Duration = Duration::from_secs(3);
 // TestObs : jusqu'a 2 s par etape cote moteur.
 const TIMEOUT_OBS: Duration = Duration::from_secs(8);
@@ -70,7 +72,7 @@ fn open(name: &str, allowed: &str, write: bool, deadline: Instant) -> Result<Fil
                 thread::sleep(Duration::from_millis(20))
             }
             Err(e) if e.raw_os_error() == Some(ERROR_FILE_NOT_FOUND.0 as i32) => {
-                return Err("moteur arrete".into())
+                return Err(ENGINE_DOWN.into())
             }
             Err(e) => return Err(format!("pipe du moteur: {e}")),
         }
@@ -111,6 +113,11 @@ pub fn control_at(
 pub fn control(cmd: &str) -> Result<Response, String> {
     let t = if cmd == "test_obs" { TIMEOUT_OBS } else { TIMEOUT };
     control_at(CONTROL_PIPE, ENGINE_EXE, cmd, t)
+}
+
+/// Vrai quand le pipe de controle n'existe plus (moteur sorti).
+pub fn engine_gone() -> bool {
+    matches!(open(CONTROL_PIPE, ENGINE_EXE, false, Instant::now()), Err(e) if e == ENGINE_DOWN)
 }
 
 /// Relaie le pipe d'evenements `name` vers `emit`, pour toujours (reconnexion toutes les secondes).
