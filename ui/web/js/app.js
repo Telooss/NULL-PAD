@@ -11,6 +11,8 @@ import { saveFlow, guard, confirmBox, modalOpen } from './config-mode.js';
 import { createSettings } from './settings.js';
 import { initFx } from './fx.js';
 import { barSlots, nextFreeId, withNewProfile, withoutProfile, openCreate, openMenu, cleanTag, slotLabel, NAME_MAX } from './profiles.js';
+import { createPadFlow } from './pad-flow.js';
+import { isAction, setNative, setAction, renameLayer, withLayer, copyLayer, samePad } from './pad-model.js';
 
 const N = window.NullCtl;
 const app = document.getElementById('app');
@@ -20,9 +22,10 @@ const panelEl = document.getElementById('panel');
 
 let cfg = null;
 let cfgError = null;
-const [natives, geo] = await Promise.all([
+const [natives, geo, , , catalog] = await Promise.all([
   invoke('native_keys').catch(() => ({})), fetch('assets/nullpad.json').then((r) => r.json()), N.fontsReady(),
   invoke('get_config').then((c) => { cfg = c; }, (e) => { cfgError = String(e); }),
+  invoke('hid_catalog').catch(() => []),
 ]);
 
 const slots = profileSlots(cfg);
@@ -33,6 +36,8 @@ let link = 'none';
 let draft = null; // non nul = mode configuration
 let configWaiter = null;
 let saving = false; // enregistrement en cours : boutons, profils, depots et panneau figes
+let padEdit = null; // pad modifiable dans cette configuration : { expected (lecture), target (brouillon du pad), maxLen }
+let entering = false; // lecture du pad avant le mode configuration
 
 const shell = mountShell();
 const topbar = document.querySelector('.nc-topbar');
@@ -60,7 +65,19 @@ function renderBar() {
   shell.setCanCreate(!cfgError && nextFreeId(cfg) !== null);
 }
 
-const requestConfig = () => { if (!cfgError && !draft && !creating && !settings.isOpen()) enterConfig(); };
+// Entree en configuration : le pad branche est lu d'abord (M1 + M3 s'il est verrouille) ; sinon natives en lecture seule.
+const requestConfig = async () => {
+  if (cfgError || draft || creating || entering || saving || settings.isOpen()) return;
+  entering = true;
+  topbar.inert = true;
+  try {
+    padEdit = await padFlow.edit();
+  } finally {
+    entering = false;
+    topbar.inert = false;
+  }
+  if (!draft && !creating && !settings.isOpen()) enterConfig();
+};
 const viewPanel = createViewPanel(panelEl, { onConfigure: requestConfig });
 const editPanel = createEditPanel(panelEl, { pickFile, onChange: () => refreshPad() });
 shell.setLink('none');
@@ -70,6 +87,20 @@ shell.setConfigurable(!cfgError);
 if (cfgError) viewPanel.block(`Config illisible : ${cfgError} — corrigez le fichier ou réenregistrez depuis les réglages`);
 
 const pad = createPad(stage, geo, { lcd: { top: '---', tag: '', bottom: '' } });
+const padFlow = createPadFlow({ invoke, listen, app, shell, toast: (t) => toast(app, t), onModel: () => { refreshPad(); if (!draft) refreshPanel(); } });
+
+// Keymap du pad pour les legendes et les regles : la cible modifiable en configuration, sinon la derniere connue (lecture seule).
+const padCtx = () => (draft && padEdit ? { model: padEdit.target, editable: true } : padFlow.model() ? { model: padFlow.model(), editable: false } : null);
+const padUi = () => { const c = padCtx(); return c && { ...c, catalog, toNative, toAction }; };
+// Passer en native retire les liaisons nullctl de l'entree ; repasser en action remet Action{p, i}.
+function toNative(input, b) { padEdit.target = setNative(padEdit.target, draft, profileId, input, b); refreshPad(); refreshPanel(); }
+function toAction(input) { padEdit.target = setAction(padEdit.target, profileId, input); refreshPad(); refreshPanel(); }
+const dirty = () => draft.dirty() || (!!padEdit && !samePad(padEdit.expected, padEdit.target));
+// Validation et ecriture de la config contre la keymap ecrite, ou la derniere connue (sinon la table du firmware).
+const cfgCalls = {
+  validate: (json, p) => invoke('validate_config', { json, pad: p ?? padFlow.model() }),
+  save: (json, p) => invoke('save_config', { json, pad: p ?? padFlow.model() }),
+};
 
 // Ce qui est affiche : le brouillon fusionne en configuration, la config sinon.
 const shown = () => (draft ? draft.merged() : cfg);
@@ -77,8 +108,8 @@ renderBar();
 
 function refreshPanel() {
   if (cfgError) return;
-  if (draft) editPanel.show({ input: selected, draft, profileId, natives });
-  else viewPanel.show(selected && { ...panelModel(cfg, profileId, selected, natives), input: selected });
+  if (draft) editPanel.show({ input: selected, draft, profileId, natives, pad: padUi() });
+  else viewPanel.show(selected && { ...panelModel(cfg, profileId, selected, natives, padCtx()?.model), input: selected });
   N.wire(main);
 }
 
@@ -88,7 +119,7 @@ function refreshLcd() {
 }
 
 function refreshPad() {
-  pad.setLegends(legendsFor(shown(), profileId, natives));
+  pad.setLegends(legendsFor(shown(), profileId, natives, padCtx()?.model));
   refreshLcd();
 }
 
@@ -135,6 +166,7 @@ async function reload() {
 
 // ── Mode configuration ─────────────────────────────────────
 function enterConfig() {
+  if (padEdit) padEdit.target = structuredClone(padEdit.expected); // changements du pad d'un brouillon abandonne
   draft = createDraft(cfg, profileId);
   stage.classList.add('is-config');
   banner.hidden = false;
@@ -192,21 +224,39 @@ async function commit(follow = true) {
     }
     r = await saveFlow({
       json: JSON.stringify(merged),
-      validate: (json) => invoke('validate_config', { json }),
-      save: (json) => invoke('save_config', { json }),
+      ...cfgCalls,
       waitConfigEvent,
       engineUp: shell.engineUp,
       discard: () => { cfg = merged; exitConfig(follow); },
+      pad: padEdit && padFlow.deps(padEdit.expected, padEdit.target),
     });
   } finally {
     saving = false;
     panelEl.inert = false;
     rename.inert = false;
   }
+  // Pad ecrit : c'est la nouvelle lecture de reference, meme si la config echoue ensuite.
+  padFlow.settle(r);
+  if (r.padModel && padEdit) padEdit = { ...padEdit, expected: r.padModel, target: structuredClone(r.padModel) };
+  if (r.state === 'pad') {
+    editPanel.setError(`Pad non écrit, brouillon gardé : ${r.error}`);
+    const re = await padFlow.onPadError(r);
+    if (re && draft) {
+      padEdit = { expected: re.model, target: structuredClone(re.model), maxLen: re.max_name_len };
+      // Les actions posees sur des touches redevenues natives ne pourraient plus s'enregistrer.
+      const lost = draft.get().bindings.filter((b) => !isAction(re.model, profileId, b.input));
+      for (const b of lost) draft.set(b.input, b.trigger, null);
+      toast(app, `Pad relu : ses changements sont perdus${lost.length ? ', avec les actions des touches natives' : ''}. Le reste du brouillon est gardé`);
+      refreshPad();
+      refreshPanel();
+    }
+    return false;
+  }
   if (r.state === 'invalid' || r.state === 'rejected') {
     const msg = r.state === 'rejected' ? `Refusé par le moteur (brouillon gardé) : ${r.error}` : r.write ? `Écriture impossible : ${r.error}` : r.error;
-    editPanel.setError(msg);
-    toast(app, r.state === 'rejected' ? 'Refusé par le moteur' : r.write ? 'Écriture impossible : rien n’a changé' : 'Config invalide : rien n’a été écrit');
+    const padFirst = r.padUpdated && r.state === 'invalid';
+    editPanel.setError(padFirst ? `Pad mis à jour, config non enregistrée : ${msg}` : msg);
+    toast(app, padFirst ? 'Pad mis à jour, config non enregistrée' : r.state === 'rejected' ? 'Refusé par le moteur' : r.write ? 'Écriture impossible : rien n’a changé' : 'Config invalide : rien n’a été écrit');
     return false;
   }
   toast(app, r.state === 'saved' ? 'Enregistré' : 'Enregistré, pris en compte au démarrage du moteur');
@@ -221,7 +271,7 @@ const LEAVE = { title: 'Changements non enregistrés', text: 'Le brouillon de ce
 
 // Quitter le brouillon (changer de profil, fermer) : true si on peut partir.
 async function leaveDraft(follow) {
-  if (guard(draft.dirty(), 'leave') === 'proceed') { exitConfig(follow); return true; }
+  if (guard(dirty(), 'leave') === 'proceed') { exitConfig(follow); return true; }
   const c = await confirmBox(app, LEAVE);
   if (!draft) return true; // mode deja quitte pendant la question
   if (c === 'save') return commit(follow);
@@ -232,7 +282,7 @@ async function leaveDraft(follow) {
 shell.onSave(() => { if (draft) commit(); });
 shell.onCancel(async () => {
   if (!draft || saving) return;
-  if (guard(draft.dirty(), 'cancel') === 'ask') {
+  if (guard(dirty(), 'cancel') === 'ask') {
     const c = await confirmBox(app, { title: 'Annuler la configuration', text: 'Les changements non enregistrés seront perdus.',
       buttons: [['discard', 'Abandonner les changements'], ['stay', 'Rester', true]] });
     if (c !== 'discard') return;
@@ -255,6 +305,7 @@ function applyMeta() {
   if (tagIn.value !== tag) tagIn.value = tag;
   tagIn.toggleAttribute('aria-invalid', tag.length !== 3);
   draft.setProfileMeta({ name: nameIn.value.trim() || cur.name, tag: tag.length === 3 ? tag : cur.tag });
+  if (padEdit) padEdit.target = renameLayer(padEdit.target, profileId, draft.get().tag, padEdit.maxLen); // l'ecran du pad affiche le tag
   renderBar();
   refreshLcd();
 }
@@ -265,25 +316,35 @@ tagIn.addEventListener('blur', () => { if (draft) { tagIn.value = draft.get().ta
 
 // ── Creer / supprimer : ecriture immediate (validation, enregistrement, evenement du moteur), jamais avec un brouillon modifie ──
 // -> true si ecrit ; sinon un toast dit pourquoi et rien n'a change.
-async function writeNow(next) {
+// padOp (profils) : async () -> { expected, target } a ecrire d'abord, ou null (pas de pad : config seule, « Pad pas à jour »).
+async function writeNow(next, padOp = null) {
   if (saving) return false;
   saving = true;
   panelEl.inert = true;
   let r;
+  let padW = null;
   try {
+    padW = padOp && (await padOp().catch(() => null));
     r = await saveFlow({
       json: JSON.stringify(next),
-      validate: (json) => invoke('validate_config', { json }),
-      save: (json) => invoke('save_config', { json }),
+      ...cfgCalls,
       waitConfigEvent,
       engineUp: shell.engineUp,
+      pad: padW && padFlow.deps(padW.expected, padW.target),
     });
   } finally {
     saving = false;
     panelEl.inert = false;
   }
+  padFlow.settle(r);
+  if (r.state === 'pad') {
+    toast(app, `Pad non écrit, rien n’a changé : ${r.error}`);
+    return false;
+  }
+  if (padOp && !padW) padFlow.markStale();
   if (r.state === 'invalid' || r.state === 'rejected') {
-    toast(app, r.state === 'rejected' ? `Refusé par le moteur : ${r.error}` : r.write ? `Écriture impossible : ${r.error}` : `Config invalide : ${r.error}`);
+    const why = r.state === 'rejected' ? `Refusé par le moteur : ${r.error}` : r.write ? `Écriture impossible : ${r.error}` : `Config invalide : ${r.error}`;
+    toast(app, r.padUpdated && r.state === 'invalid' ? `Pad mis à jour, config non enregistrée : ${r.error}` : why);
     return false;
   }
   try {
@@ -310,6 +371,13 @@ shell.onSettings(() => {
   settings.open();
 });
 
+// Couche p du pad pour une operation sur les profils (lecture avec M1 + M3 si besoin) -> { expected, target } ou null.
+async function padLayer(p, bindingsOf, name) {
+  const e = await padFlow.edit();
+  if (!e?.expected.layers[p - 1]) return null;
+  return { expected: e.expected, target: withLayer(e.expected, p, await bindingsOf(e.expected), name.slice(0, e.maxLen)) };
+}
+
 async function newProfile(want) {
   if (saving || creating || settings.isOpen() || modalOpen() || cfgError || nextFreeId(cfg) === null) return;
   if (draft && !(await leaveDraft(false))) return;
@@ -329,7 +397,8 @@ async function newProfile(want) {
   if (!out || draft) return;
   const next = withNewProfile(cfg, { name: out.name, tag: out.tag, copyFrom: out.copy ? fromId : undefined, want: id });
   const newId = next.profiles.find((p) => !profileOf(cfg, p.id)).id;
-  if (!(await writeNow(next))) return;
+  const layer = (m) => (out.copy ? copyLayer(m.layers[fromId - 1].bindings, fromId, newId) : invoke('pad_default_layer', { profile: newId }));
+  if (!(await writeNow(next, () => padLayer(newId, layer, out.tag)))) return;
   profileId = newId;
   renderBar();
   refreshPad();
@@ -344,7 +413,8 @@ async function deleteProfile(id) {
   if (draft && !(await leaveDraft(false))) return;
   const c = await confirmBox(app, { title: 'Supprimer le profil', text: `Supprimer le profil ${p.name} (${p.tag}) ? Ses actions seront perdues.`,
     buttons: [['delete', 'Supprimer'], ['stay', 'Annuler', true]] });
-  if (c !== 'delete' || draft || creating || !(await writeNow(withoutProfile(cfg, id)))) return;
+  const reset = () => padLayer(id, () => invoke('pad_default_layer', { profile: id }), `P0${id}`);
+  if (c !== 'delete' || draft || creating || !(await writeNow(withoutProfile(cfg, id), reset))) return;
   if (!profileOf(cfg, profileId)) profileId = 1;
   if (!profileOf(cfg, padProfile)) padProfile = 1;
   renderBar();
@@ -356,9 +426,10 @@ async function deleteProfile(id) {
 
 shell.onNew(newProfile);
 shell.onMenu((id, anchor) => !creating && !settings.isOpen() && openMenu(anchor, [['Supprimer le profil…', () => deleteProfile(id)]]));
-onCloseRequested(() => (settings.isOpen() ? settings.leave() : !draft || guard(draft.dirty(), 'close') === 'proceed' ? true : leaveDraft(false)));
+onCloseRequested(() => (settings.isOpen() ? settings.leave() : !draft || guard(dirty(), 'close') === 'proceed' ? true : leaveDraft(false)));
 
 refreshPad();
+padFlow.init();
 pad.onPick((input) => { if (input && !saving) select(input); });
 
 // Depot de fichiers (natif Tauri, ou mock) ecoute au niveau de la webview / du document.
@@ -367,13 +438,15 @@ onFileDrop(({ type, paths, x, y }) => {
   const busy = saving || modalOpen(); // pendant un enregistrement ou une question : depot ignore
   const target = type === 'leave' || busy ? null : pad.pickAt(x, y);
   // Lueur seulement sur une cible liable (pas de natives, M1–M3, molette gauche).
-  if (type !== 'drop') { if (draft) pad.hover(target && !refusal(target, profileId, natives) ? target : null); return; }
+  const pc = padCtx();
+  if (type !== 'drop') { if (draft) pad.hover(target && !refusal(target, profileId, natives, pc) ? target : null); return; }
   pad.hover(null);
   if (busy) return;
   if (!draft) return toast(app, 'Passer en configuration pour modifier');
   if (!target) return toast(app, 'Déposer le fichier sur une touche ou une molette');
-  const out = actionForDrop(paths, target, profileId, natives, draft.sounds().map((s) => s.id));
+  const out = actionForDrop(paths, target, profileId, natives, draft.sounds().map((s) => s.id), pc);
   if (out.error) return toast(app, out.error);
+  if (pc?.editable && !isAction(padEdit.target, profileId, target)) padEdit.target = setAction(padEdit.target, profileId, target); // native -> action
   if (out.sound) draft.addSound(out.sound);
   draft.set(target, 'Press', { action: out.action });
   editPanel.showTrigger(target, 0); // l'action deposee est sur l'appui court

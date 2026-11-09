@@ -46,8 +46,8 @@ const mock = {
     const miss = [...JSON.stringify(c.profiles).matchAll(/"type":"Sound","id":"([^"]*)"/g)].map((m) => m[1]).find((id) => !ids.has(id));
     if (miss !== undefined) throw `config invalide: son "${miss}" absent de sound.sounds`;
   },
-  save_config: ({ json }) => {
-    mock.validate_config({ json });
+  save_config: ({ json, pad }) => {
+    mock.validate_config({ json, pad });
     mockCfg = JSON.parse(json);
     setTimeout(() => emit('engine-event', { type: 'config', ok: true, error: null }), 200);
   },
@@ -64,6 +64,72 @@ const mock = {
     K12: '1', K13: '2', K14: '3', K15: 'ENTRÉE', K16: '0', K17: '00', K18: '.', M1: 'P1', M2: 'P2', M3: 'P3',
     ENC_L_CW: 'VOL+', ENC_L_CCW: 'VOL−', ENC_L_PRESS: 'MUET' }),
 };
+
+// ?pad=1 : faux pad (ZMK Studio). &padlock=1 : verrouille, deverrouille 2 s apres la demande ;
+// &paderr=changed-elsewhere|foreign-unsaved|disconnected : pad_write echoue une fois ; ?pad=absent : pas de pad.
+const qs = new URLSearchParams(location.search);
+if (!T && qs.get('pad')) {
+  const absent = qs.get('pad') === 'absent';
+  let locked = qs.get('padlock') === '1';
+  let err = qs.get('paderr');
+  let cancel = false;
+  const kp = (id, label) => ({ kind: 'native', usage: (7 << 16) | id, label });
+  const cc = (id, label) => ({ kind: 'native', usage: (0x0c << 16) | id, label });
+  const defLayer = (p) => {
+    const act = (i) => ({ kind: 'action', profile: p, input: i });
+    const grid = p > 1 ? Array.from({ length: 20 }, (_, i) => act(i)) : [kp(0x53, 'Verr Num'), kp(0x54, '/'), kp(0x55, '*'), kp(0x56, '-'),
+      kp(0x5f, '7'), kp(0x60, '8'), kp(0x61, '9'), kp(0x57, '+'), kp(0x5c, '4'), kp(0x5d, '5'), kp(0x5e, '6'), act(11),
+      kp(0x59, '1'), kp(0x5a, '2'), kp(0x5b, '3'), kp(0x58, 'Entrée'), kp(0x62, '0'), { kind: 'other', behavior: 'np_00', p1: 0, p2: 0 }, kp(0x63, '.'), act(19)];
+    return [...grid, ...[1, 2, 3].map((n) => ({ kind: 'profile_macro', n })), cc(0xe9, 'Volume +'), cc(0xea, 'Volume −'), cc(0xe2, 'Muet'), act(26), act(27), act(28)];
+  };
+  let km = { layers: Array.from({ length: 8 }, (_, i) => ({ id: i, name: i ? `P0${i + 1}` : 'DEF', bindings: defLayer(i + 1) })) };
+  const read = () => ({ model: structuredClone(km), max_name_len: 16 });
+  const present = () => { if (absent) throw 'absent: Pad non branché'; };
+  const unlock = async () => {
+    if (!locked) return;
+    cancel = false;
+    emit('pad-unlock-needed', {});
+    for (let t = 0; t < 20; t++) {
+      await new Promise((r) => setTimeout(r, 100));
+      if (cancel) throw 'cancelled: Déverrouillage annulé';
+    }
+    locked = false;
+  };
+  const letters = Array.from({ length: 26 }, (_, i) => ({ usage: (7 << 16) | (4 + i), label: String.fromCharCode(65 + i), group: 'Clavier' }));
+  const digits = Array.from({ length: 10 }, (_, i) => ({ usage: (7 << 16) | (0x1e + i), label: String((i + 1) % 10), group: 'Clavier' }));
+  const pad = [...Array.from({ length: 9 }, (_, i) => kp(0x59 + i, String(i + 1))), kp(0x62, '0'), kp(0x58, 'Entrée'), kp(0x57, '+')].map((b) => ({ usage: b.usage, label: b.label, group: 'Pavé numérique' }));
+  const media = [cc(0xe9, 'Volume +'), cc(0xea, 'Volume −'), cc(0xe2, 'Muet'), cc(0xcd, 'Lecture/Pause')].map((b) => ({ usage: b.usage, label: b.label, group: 'Média et volume' }));
+  Object.assign(mock, {
+    pad_status: () => ({ present: !absent, locked: absent ? null : locked, serial: absent ? null : 'NP01', cache_at: null, busy: false }),
+    pad_cached: () => read(),
+    pad_cancel_unlock: () => { cancel = true; },
+    pad_read: async () => { present(); await unlock(); return read(); },
+    pad_write: async ({ expected, target }) => {
+      present();
+      await unlock();
+      if (err) { const e = err; err = null; throw `${e}: erreur simulée (${e})`; }
+      if (JSON.stringify(expected) !== JSON.stringify(km)) throw 'changed-elsewhere: Le pad a changé depuis la lecture';
+      const bad = target.layers.find((l) => !l.name || l.name.length > 16 || !l.bindings.some((b) => b.kind === 'profile_macro' && b.n === 1));
+      if (bad) throw `guard: La couche « ${bad.name} » doit garder une touche np_p1`;
+      km = structuredClone(target);
+      return read();
+    },
+    pad_discard_foreign: () => null,
+    hid_catalog: () => [...letters, ...digits, ...pad, ...media],
+    pad_default_layer: ({ profile }) => defLayer(profile),
+  });
+  // Avec une keymap : aucune liaison sur une position native (store::validate cote Rust).
+  const validate = mock.validate_config;
+  mock.validate_config = ({ json, pad: m }) => {
+    validate({ json });
+    const I = ['M1', 'M2', 'M3', 'ENC_L_CW', 'ENC_L_CCW', 'ENC_L_PRESS', 'ENC_R_CW', 'ENC_R_CCW', 'ENC_R_PRESS'];
+    const idx = (n) => (/^K\d\d$/.test(n) ? +n.slice(1) : 20 + I.indexOf(n));
+    for (const p of m ? JSON.parse(json).profiles : []) {
+      const b = p.bindings.find((x) => { const k = m.layers[p.id - 1]?.bindings[idx(x.input)]; return !(k?.kind === 'action' && k.profile === p.id && k.input === idx(x.input)); });
+      if (b) throw `touche native du firmware : ${b.input} (profil ${p.id}), modifiable plus tard depuis le pad`;
+    }
+  };
+}
 
 // ?demo=1 : appuis, actions et changements de profil simules.
 if (!T && new URLSearchParams(location.search).get('demo') === '1') {

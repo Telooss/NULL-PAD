@@ -1,11 +1,12 @@
 // Fichier depose sur une touche -> action. Pur : aucun acces DOM.
-import { canBind } from './draft.js';
+import { canBind } from './pad-model.js';
 
 export const AUDIO = ['mp3', 'wav', 'ogg', 'flac'];
 
-// Message de refus pour une entree non liable (natives, M1–M3, molette gauche), sinon null.
-export function refusal(target, profileId, natives) {
-  if (canBind(profileId, target, natives)) return null;
+// Message de refus pour une entree non liable (natives, M1–M3, molette gauche), sinon null. pad : { model, editable } ou null.
+export function refusal(target, profileId, natives, pad = null) {
+  if (canBind(profileId, target, natives, pad)) return null;
+  if (pad?.model) return 'Touche native du pad : branchez et déverrouillez le pad pour la modifier';
   if (/^M[123]$/.test(target)) return 'Touche de profil du firmware : non modifiable ici';
   if (target.startsWith('ENC_L_')) return 'Molette gauche du firmware : non modifiable ici';
   return 'Touche native du firmware : modifiable plus tard depuis le pad';
@@ -19,8 +20,8 @@ export function soundFromPath(p, existingSoundIds = []) {
   return { id, path: p, volume: 100, on_repeat: 'Restart' };
 }
 
-export function actionForDrop(paths, target, profileId, natives = {}, existingSoundIds = []) {
-  const error = refusal(target, profileId, natives);
+export function actionForDrop(paths, target, profileId, natives = {}, existingSoundIds = [], pad = null) {
+  const error = refusal(target, profileId, natives, pad);
   if (error) return { error };
   if (!paths?.length) return { error: 'Aucun fichier' };
   const p = paths[0];

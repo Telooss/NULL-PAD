@@ -1,6 +1,9 @@
 // Logique pure du mode vue (aucun acces DOM) : descriptions, legendes, modele du panneau, textes.
 import { ACTIONS, TRIGGERS, TRIGGER_LABELS } from './catalog.js';
 import { legendFor, fitLegend } from './legend.js';
+import { INPUTS, padNatives } from './pad-model.js';
+
+export { INPUTS };
 
 export const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
@@ -56,13 +59,13 @@ export const profileSlots = (config) => [1, 2, 3].map((id) => {
   return p ? { id, name: p.name, tag: p.tag } : null;
 });
 
-export const INPUTS = [...Array.from({ length: 20 }, (_, i) => `K${String(i).padStart(2, '0')}`), 'M1', 'M2', 'M3',
-  'ENC_L_CW', 'ENC_L_CCW', 'ENC_L_PRESS', 'ENC_R_CW', 'ENC_R_CCW', 'ENC_R_PRESS'];
+// Natives d'un profil : d'apres la keymap du pad si elle est connue, sinon la table du firmware.
+const natOf = (natives, profileId, pad) => (pad ? padNatives(pad, profileId) : nativesFor(natives, profileId));
 
-// InputId -> { text: [l1, l2], kind }
-export function legendsFor(config, profileId, natives) {
+// InputId -> { text: [l1, l2], kind } ; pad : PadModel connu ou null.
+export function legendsFor(config, profileId, natives, pad = null) {
   const prof = profileOf(config, profileId);
-  const nat = nativesFor(natives, profileId);
+  const nat = natOf(natives, profileId, pad);
   const out = {};
   for (const input of INPUTS) {
     const l = legendFor(prof?.bindings.find((b) => b.input === input && b.trigger === 'Press'), nat, config?.sound?.sounds, input);
@@ -83,15 +86,15 @@ const nativeNote = (legend) => `Touche native · ${legend}, envoyée par le pad,
 const ENC_PARTS = [['CW', 'Sens horaire'], ['CCW', 'Sens anti-horaire'], ['PRESS', 'Clic']];
 
 // Modele du panneau lecture seule : { name, place, kind, note?, sections: [{ title?, native?, rows: [{ trigger, label, action|null }] }] }
-export function panelModel(config, profileId, input, natives) {
+export function panelModel(config, profileId, input, natives, pad = null) {
   const prof = profileOf(config, profileId);
-  const nat = nativesFor(natives, profileId);
+  const nat = natOf(natives, profileId, pad);
   const rows = (inp, triggers) => triggers.map((t) => {
     const b = prof?.bindings.find((x) => x.input === inp && x.trigger === t);
     return { trigger: t, label: TRIGGER_LABELS[t], action: b ? { ...describeAction(b.action), label: b.label } : null };
   });
   const place = placeOf(input);
-  if (/^M[123]$/.test(input)) return { name: input, place, kind: 'profile', note: 'Touche de profil du firmware', sections: [] };
+  if (!pad && /^M[123]$/.test(input)) return { name: input, place, kind: 'profile', note: 'Touche de profil du firmware', sections: [] };
   const enc = /^ENC_([LR])_/.exec(input)?.[1];
   if (enc) {
     const sections = ENC_PARTS.map(([part, title]) => {
