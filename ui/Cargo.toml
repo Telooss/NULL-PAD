@@ -25,7 +25,7 @@ engine = { path = "../engine" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"
-windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_Pipes", "Win32_System_Threading", "Win32_Storage_FileSystem"] }
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_Pipes", "Win32_System_Threading", "Win32_Storage_FileSystem", "Win32_UI_Input_KeyboardAndMouse"] }
 prost = "0.14"
 serialport = "4.10"
 tauri-plugin-updater = "~2.14.1" # configure_client expose reqwest : version mineure figee

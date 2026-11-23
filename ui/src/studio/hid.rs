@@ -26,17 +26,6 @@ const NAMED: &[(u32, &str, &str)] = &[
     (u(KEY, 0x2A), "Retour arrière", "Clavier"),
     (u(KEY, 0x2B), "Tab", "Clavier"),
     (u(KEY, 0x2C), "Espace", "Clavier"),
-    (u(KEY, 0x2D), "-", "Clavier"),
-    (u(KEY, 0x2E), "=", "Clavier"),
-    (u(KEY, 0x2F), "[", "Clavier"),
-    (u(KEY, 0x30), "]", "Clavier"),
-    (u(KEY, 0x31), "\\", "Clavier"),
-    (u(KEY, 0x33), ";", "Clavier"),
-    (u(KEY, 0x34), "'", "Clavier"),
-    (u(KEY, 0x35), "`", "Clavier"),
-    (u(KEY, 0x36), ",", "Clavier"),
-    (u(KEY, 0x37), ".", "Clavier"),
-    (u(KEY, 0x38), "/", "Clavier"),
     (u(KEY, 0x39), "Verr Maj", "Clavier"),
     (u(KEY, 0x46), "Impr écran", "Clavier"),
     (u(KEY, 0x47), "Arrêt défil", "Clavier"),
@@ -82,9 +71,68 @@ const NAMED: &[(u32, &str, &str)] = &[
     (u(KEY, 0xE7), "Win droite", "Modificateurs"),
 ];
 
+/// Touches à caractère : (id HID, scancode jeu 1, caractère en QWERTY US).
+/// Le pad envoie une position, pas un caractère : en AZERTY, l'id 0x04 (« A » US) tape « q ».
+fn chars() -> Vec<(u32, u32, char)> {
+    const LETTER_SC: [u32; 26] = [
+        0x1E, 0x30, 0x2E, 0x20, 0x12, 0x21, 0x22, 0x23, 0x17, 0x24, 0x25, 0x26, 0x32, 0x31, 0x18,
+        0x19, 0x10, 0x13, 0x1F, 0x14, 0x16, 0x2F, 0x11, 0x2D, 0x15, 0x2C,
+    ];
+    let mut v: Vec<_> = (0..26u32)
+        .map(|i| (4 + i, LETTER_SC[i as usize], char::from(b'A' + i as u8)))
+        .collect();
+    v.extend((0..10u32).map(|i| (0x1E + i, 2 + i, char::from(b'0' + ((i + 1) % 10) as u8))));
+    v.extend([
+        (0x2D, 0x0C, '-'),
+        (0x2E, 0x0D, '='),
+        (0x2F, 0x1A, '['),
+        (0x30, 0x1B, ']'),
+        (0x31, 0x2B, '\\'),
+        (0x33, 0x27, ';'),
+        (0x34, 0x28, '\''),
+        (0x35, 0x29, '`'),
+        (0x36, 0x33, ','),
+        (0x37, 0x34, '.'),
+        (0x38, 0x35, '/'),
+        (0x64, 0x56, '<'), // touche ISO à gauche de W en AZERTY
+    ]);
+    v
+}
+
+/// Caractère tapé sans modificateur par le scancode `sc` dans la disposition Windows active.
+fn layout_char(sc: u32) -> Option<char> {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        GetKeyboardLayout, MapVirtualKeyExW, MAPVK_VK_TO_CHAR, MAPVK_VSC_TO_VK,
+    };
+    // SAFETY : appels sans pointeur ; 0 si la touche n'existe pas dans la disposition.
+    let ch = unsafe {
+        let hkl = GetKeyboardLayout(0);
+        let vk = MapVirtualKeyExW(sc, MAPVK_VSC_TO_VK, Some(hkl));
+        MapVirtualKeyExW(vk, MAPVK_VK_TO_CHAR, Some(hkl)) & 0x7FFF // bit 15 = touche morte
+    };
+    char::from_u32(ch).filter(|c| !c.is_control())
+}
+
 /// Toutes les touches sans modificateur, dans l'ordre d'affichage.
 fn all() -> Vec<KeyChoice> {
-    let mut v = Vec::new();
+    all_with(layout_char)
+}
+
+fn all_with(layout: impl Fn(u32) -> Option<char>) -> Vec<KeyChoice> {
+    let mut v: Vec<KeyChoice> = chars()
+        .into_iter()
+        .map(|(id, sc, us)| KeyChoice {
+            usage: u(KEY, id),
+            label: layout(sc).unwrap_or(us).to_string(),
+            group: "Clavier",
+        })
+        .collect();
+    // Lettres A–Z d'abord, dans l'ordre alphabétique ; le reste garde l'ordre du clavier.
+    v.sort_by_key(|k| {
+        let mut cs = k.label.chars();
+        let letter = cs.next().filter(|c| c.is_ascii_uppercase() && cs.next().is_none());
+        (letter.is_none(), letter)
+    });
     let mut add = |usage, label: String, group| {
         v.push(KeyChoice {
             usage,
@@ -92,16 +140,6 @@ fn all() -> Vec<KeyChoice> {
             group,
         })
     };
-    for i in 0..26u32 {
-        add(
-            u(KEY, 4 + i),
-            char::from(b'A' + i as u8).to_string(),
-            "Clavier",
-        );
-    }
-    for i in 0..10u32 {
-        add(u(KEY, 0x1E + i), ((i + 1) % 10).to_string(), "Clavier");
-    }
     for i in 0..12u32 {
         add(u(KEY, 0x3A + i), format!("F{}", i + 1), "Clavier");
     }
@@ -167,6 +205,25 @@ mod tests {
         );
         assert_eq!(name(u(KEY, 0x2C)).as_deref(), Some("Espace"));
         assert_eq!(name(u(KEY, 0x01)), None);
+    }
+
+    #[test]
+    fn labels_follow_layout() {
+        // Faux AZERTY : A et Q échangés, 1 tape « & ».
+        let azerty = |sc| match sc {
+            0x10 => Some('A'),
+            0x1E => Some('Q'),
+            0x02 => Some('&'),
+            _ => None,
+        };
+        let c = all_with(azerty);
+        let label = |id| &c.iter().find(|k| k.usage == u(KEY, id)).unwrap().label;
+        assert_eq!(label(0x14), "A");
+        assert_eq!(label(0x04), "Q");
+        assert_eq!(label(0x1E), "&");
+        assert_eq!(label(0x05), "B"); // inconnu : secours QWERTY
+        assert_eq!(c[0].label, "A");
+        assert_eq!(c[0].usage, u(KEY, 0x14));
     }
 
     #[test]
