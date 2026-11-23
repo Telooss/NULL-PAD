@@ -6,7 +6,7 @@ Ce guide explique comment donner un rôle à chaque touche et à chaque molette 
 
 1. **Installe nullctl** : `NULL-CONTROL_<version>_x64-setup.exe`, sur la [page des versions](https://github.com/Telooss/NULL-PAD/releases/latest). Si SmartScreen avertit, clique sur « Informations complémentaires », puis sur « Exécuter quand même ».
 2. **Le moteur doit tourner**, c'est lui qui exécute les actions. Il a une icône dans la zone de notification, et l'interface affiche « Moteur en marche ». S'il est arrêté, le bouton « Démarrer le moteur » le relance.
-3. **Branche le pad en USB** pour modifier les touches natives (voir plus bas). Les touches « action » marchent aussi en Bluetooth.
+3. **Branche le pad en USB** pour modifier les touches natives (voir plus bas). Les touches « action » marchent aussi en Bluetooth. En Bluetooth, la pastille indique « Lecture seule en Bluetooth » et, dans « Configurer », les touches qu'on ne peut pas modifier sont grisées sur le pad 3D.
 4. **Ferme ZMK Studio** : un seul programme à la fois peut parler au pad.
 
 ## 2. Les deux sortes de touches
@@ -139,6 +139,7 @@ Pour Ableton : mappe ce CC en mode **« Relative (2's Comp.) »**. Ici, 1 et 127
 - Un **profil** est un jeu complet de touches. **M1, M2 et M3** passent aux profils 1, 2 et 3. Tu peux créer jusqu'à **8 profils** avec « Nouveau profil ». Les profils 4 à 8 n'ont pas de touche M : on y va avec une touche native réglée sur « Aller au profil ».
 - Le **profil 1 (DEF)** est le pavé numérique natif : il marche même sans nullctl.
 - Le **tag** (3 lettres ou chiffres, par exemple `OBS`, `MAO`) s'affiche sur l'écran du pad et se change dans le profil.
+- La **description** (facultative, 140 caractères) s'affiche sur l'accueil, dans la fenêtre `profil_<tag>.exe`, sous le nom du profil. Tu la remplis dans « Nouveau profil » ou dans « Configurer », à côté du nom et du tag.
 - **Supprimer le profil…** retire le profil du pad et de la config.
 
 Idée de départ :
@@ -187,7 +188,7 @@ Seul le premier fichier déposé est utilisé.
 |---|---|
 | La touche tape `q` au lieu de `a` | La touche a été choisie avec une préversion, avant la correction AZERTY : choisis-la de nouveau dans la liste. |
 | « Pad verrouillé » | Appuie sur M1 + M3 ensemble. Le pad se reverrouille quand tu le débranches ou après 10 min sans activité. |
-| « Pad non branché » ou natives en lecture seule | Branche en **USB**. L'écriture ne passe pas par le Bluetooth. Ferme ZMK Studio. |
+| « Pad non branché », « Lecture seule en Bluetooth » ou touches grisées | Branche en **USB**. L'écriture ne passe pas par le Bluetooth. Ferme ZMK Studio. |
 | « Pad modifié ailleurs » | Clique sur **Recharger**. Si ZMK Studio a laissé des changements, clique sur « Abandonner les changements du pad ». |
 | Une action ne fait rien | Le moteur tourne-t-il (icône dans la zone de notification) ? Regarde `%APPDATA%\nullctl\logs`. |
 | OBS ne répond pas | Serveur WebSocket activé ? Bon mot de passe dans *Réglages → OBS* ? Nom de scène exact ? |
