@@ -96,3 +96,36 @@ export function mountShell() {
     onCancel: (cb) => q('[data-cancel]').addEventListener('click', cb),
   };
 }
+
+// Bandeau « Mise à jour X disponible » (nc-toast qui reste jusqu'a « Plus tard ») : version et notes de latest.json
+// en textContent seulement. -> { progress({pct, text}), ready(msg) (boutons de retour ; « Réessayer » apres une erreur), close() }.
+export function updateBanner(app, { version, notes }, { onInstall, onLater }) {
+  const el = document.createElement('div');
+  el.className = 'nc-toast nc-update';
+  el.setAttribute('role', 'status');
+  el.innerHTML = '<i data-lucide="download"></i><div class="tx"><b></b><span class="notes"></span><span class="msg"></span>' +
+    '<div class="nc-slider" style="display:none"><div class="track"><div class="fill" style="width:0%"></div></div><output></output></div></div>' +
+    '<button class="nc-btn nc-btn-sm is-primary" data-install>Installer</button><button class="nc-btn nc-btn-sm" data-later>Plus tard</button>';
+  const q = (s) => el.querySelector(s);
+  q('b').textContent = `Mise à jour ${version} disponible`;
+  q('.notes').textContent = notes ?? '';
+  const buttons = (on) => el.querySelectorAll('button').forEach((b) => { b.style.display = on ? '' : 'none'; });
+  q('[data-install]').onclick = () => { buttons(false); q('.msg').textContent = ''; onInstall(); };
+  q('[data-later]').onclick = onLater;
+  app.appendChild(el);
+  N.icons();
+  return {
+    progress({ pct, text }) {
+      q('.nc-slider').style.display = '';
+      q('.fill').style.width = `${pct ?? 100}%`;
+      q('output').textContent = text;
+    },
+    ready(msg = '') {
+      q('.nc-slider').style.display = 'none';
+      q('.msg').textContent = msg;
+      q('[data-install]').textContent = msg ? 'Réessayer' : 'Installer';
+      buttons(true);
+    },
+    close: () => el.remove(),
+  };
+}

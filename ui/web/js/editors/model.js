@@ -115,7 +115,8 @@ export const setStep = (steps, i, step) => steps.map((s, j) => (j === i ? step :
 const NAMED = { Enter: 'Enter', NumpadEnter: 'Enter', Escape: 'Esc', Tab: 'Tab', Space: 'Space', Backspace: 'Backspace', Delete: 'Delete',
   Home: 'Home', End: 'End', PageUp: 'PageUp', PageDown: 'PageDown', ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right' };
 export function shortcutOf(e) {
-  const k = NAMED[e.code] ?? /^Key([A-Z])$/.exec(e.code)?.[1] ?? /^(?:Digit|Numpad)(\d)$/.exec(e.code)?.[1] ?? /^F([1-9]|1\d|2[0-4])$/.exec(e.code)?.[0];
+  // Lettre lue dans e.key : le moteur envoie VK_<lettre>, qui suit la disposition (AZERTY : touche A -> e.code KeyQ).
+  const k = NAMED[e.code] ?? /^[a-z]$/i.exec(e.key ?? '')?.[0].toUpperCase() ?? /^Key([A-Z])$/.exec(e.code)?.[1] ?? /^(?:Digit|Numpad)(\d)$/.exec(e.code)?.[1] ?? /^F([1-9]|1\d|2[0-4])$/.exec(e.code)?.[0];
   if (!k) return null;
   return [e.ctrlKey && 'Ctrl', e.shiftKey && 'Shift', e.altKey && 'Alt', e.metaKey && 'Win', k].filter(Boolean).join('+');
 }

@@ -1,6 +1,6 @@
 import { invoke, listen, onFileDrop, pickFile, onCloseRequested } from './bridge.js';
 import { createPad } from './pad.js';
-import { mountShell } from './shell.js';
+import { mountShell, updateBanner } from './shell.js';
 import { createViewPanel } from './viewpanel.js';
 import { createEditPanel } from './editpanel.js';
 import { startLive, toast } from './live.js';
@@ -8,7 +8,8 @@ import { legendsFor, panelModel, profileOf, profileSlots } from './view.js';
 import { createDraft, mergeDraft } from './draft.js';
 import { actionForDrop, refusal } from './drop.js';
 import { saveFlow, guard, confirmBox, modalOpen } from './config-mode.js';
-import { createSettings } from './settings.js';
+import { createSettings, updateCheckOn } from './settings.js';
+import { shouldCheck, describe, progressText } from './update.js';
 import { initFx } from './fx.js';
 import { barSlots, nextFreeId, withNewProfile, withoutProfile, openCreate, openMenu, cleanTag, slotLabel, NAME_MAX } from './profiles.js';
 import { createPadFlow } from './pad-flow.js';
@@ -455,7 +456,9 @@ async function deleteProfile(id) {
 
 shell.onNew(newProfile);
 shell.onMenu((id, anchor) => !creating && !settings.isOpen() && openMenu(anchor, [['Supprimer le profil…', () => deleteProfile(id)]]));
-onCloseRequested(() => (settings.isOpen() ? settings.leave() : !draft || guard(dirty(), 'close') === 'proceed' ? true : leaveDraft(false)));
+// Partir avec un brouillon (fermeture, installation d'une mise a jour) : true si on peut.
+const askLeave = () => (settings.isOpen() ? settings.leave() : !draft || guard(dirty(), 'close') === 'proceed' ? true : leaveDraft(false));
+onCloseRequested(askLeave);
 
 refreshPad();
 padFlow.init();
@@ -494,6 +497,43 @@ if (q.get('test') === '1') {
 
 N.icons();
 N.wire(main);
+
+// ── Mises a jour : a chaque demarrage puis toutes les 6 h ; minuteur de 30 min (survit a la mise en veille) ──
+let lastCheck = null; // en memoire seulement : chaque lancement verifie
+let updBox = null; // bandeau affiche : pas d'autre verification tant qu'il est la
+
+async function checkUpdate() {
+  const now = Date.now();
+  if (updBox || !shouldCheck(lastCheck, now, updateCheckOn())) return;
+  lastCheck = now;
+  let info;
+  try {
+    info = await invoke('update_check');
+  } catch (e) {
+    return toast(app, describe(e));
+  }
+  if (!info || updBox) return;
+  updBox = updateBanner(app, info, { onInstall: () => installUpdate(info.version), onLater: () => { updBox.close(); updBox = null; } });
+}
+
+// Brouillon modifie : meme question qu'a la fermeture. Sinon l'appli redemarre a la fin (Rust).
+// version : celle affichee ; Rust refuse d'installer si latest.json annonce autre chose.
+async function installUpdate(version) {
+  if (saving) return updBox.ready('Enregistrement en cours : réessayez dans un instant');
+  if (!(await askLeave())) return updBox?.ready();
+  updBox.progress({ pct: 0, text: 'Téléchargement…' });
+  const unlisten = await listen('update-progress', ({ payload: p }) => updBox?.progress(progressText(p.downloaded, p.total)));
+  try {
+    await invoke('update_install', { expectedVersion: version });
+  } catch (e) {
+    updBox?.ready(describe(e));
+  } finally {
+    unlisten();
+  }
+}
+
+setInterval(checkUpdate, 30 * 60 * 1000);
+checkUpdate();
 
 await startLive({
   invoke, listen, app, pad, shell, setProfile: followPad, setLink,

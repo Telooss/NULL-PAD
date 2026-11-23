@@ -12,6 +12,8 @@ test('Shortcut: keys field and capture', () => {
   assert.equal(shortcutOf({ code: 'ArrowUp', altKey: true }), 'Alt+Up');
   assert.equal(shortcutOf({ code: 'F13' }), 'F13');
   assert.equal(shortcutOf({ code: 'ControlLeft', ctrlKey: true }), null);
+  assert.equal(shortcutOf({ code: 'KeyQ', key: 'a', ctrlKey: true }), 'Ctrl+A'); // AZERTY
+  assert.equal(shortcutOf({ code: 'KeyQ', key: 'Dead' }), 'Q'); // pas une lettre : position
 });
 test('Launch: args one per line <-> array; URL check switches to Open', () => {
   const a = { type: 'Launch', program: 'C:\a.exe', args: ['-x', 'y z'] };

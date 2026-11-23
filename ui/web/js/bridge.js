@@ -65,9 +65,31 @@ const mock = {
     ENC_L_CW: 'VOL+', ENC_L_CCW: 'VOL−', ENC_L_PRESS: 'MUET' }),
 };
 
+const qs = new URLSearchParams(location.search);
+
+// ?update=1 : version 9.9.9 disponible (notes avec du HTML, a afficher tel quel), telechargement simule ;
+// ?update=err : la verification echoue (network). Sans parametre : rien de neuf.
+const upd = qs.get('update');
+Object.assign(mock, {
+  update_check: () => {
+    if (upd === 'err') throw 'network: serveur injoignable (simulation)';
+    return upd === '1' ? { version: '9.9.9', notes: 'Nouveautés de test :\n- <b>pas du HTML</b>\n- progression simulée', date: '2026-11-09T12:00:00Z' } : null;
+  },
+  // Ne se termine pas : la vraie appli redemarre ici.
+  update_install: async ({ expectedVersion }) => {
+    if (upd !== '1') throw 'network: mise a jour introuvable';
+    if (expectedVersion !== '9.9.9') throw 'install: version changée';
+    const total = 4_000_000;
+    for (let d = 0; d <= total; d += 250_000) {
+      emit('update-progress', { downloaded: d, total });
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    return new Promise(() => {});
+  },
+});
+
 // ?pad=1 : faux pad (ZMK Studio). &padlock=1 : verrouille, deverrouille 2 s apres la demande ;
 // &paderr=changed-elsewhere|foreign-unsaved|disconnected : pad_write echoue une fois ; ?pad=absent : pas de pad.
-const qs = new URLSearchParams(location.search);
 if (!T && qs.get('pad')) {
   const absent = qs.get('pad') === 'absent';
   let locked = qs.get('padlock') === '1';

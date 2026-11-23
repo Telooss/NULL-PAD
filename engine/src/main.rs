@@ -5,7 +5,7 @@ use engine::config::{default_config, load, save_default_if_missing};
 use engine::dispatch::{Dispatcher, SystemExecutor};
 use engine::input_win::{run_raw_input, DeviceFilter};
 use engine::ipc::{
-    serve_control, serve_events, Events, Request, Response, CONTROL_PIPE, EVENTS_PIPE,
+    quit_engine, serve_control, serve_events, Events, Request, Response, CONTROL_PIPE, EVENTS_PIPE,
 };
 use engine::midi::{cc, Midi};
 use engine::obs::{start_obs, test_connection};
@@ -16,6 +16,7 @@ use engine::sound::devices::{cable_present, start_audio};
 use engine::tray::create_tray;
 use engine::watch::watch_config;
 use std::sync::Arc;
+use std::time::Duration;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
@@ -31,6 +32,11 @@ fn main() {
     while let Some(a) = args.next() {
         match a.as_str() {
             "--simulate" => simulate = true,
+            "--quit" => {
+                // Avant toute init (tray, audio, mutex) : n'ouvre jamais de moteur.
+                let stopped = quit_engine(CONTROL_PIPE, Duration::from_secs(5));
+                std::process::exit(if stopped.is_ok() { 0 } else { 1 });
+            }
             "--config" => path = args.next().map(Into::into).unwrap_or(path),
             other => eprintln!("argument ignore: {other}"),
         }
@@ -139,6 +145,15 @@ fn main() {
                 Ok(()) => Response::ok(None),
                 Err(e) => Response::err(e),
             },
+            Request::Quit => {
+                // Meme sortie que « Quitter » du tray ; delai pour laisser partir la reponse.
+                std::thread::spawn(|| {
+                    std::thread::sleep(Duration::from_millis(150));
+                    tracing::info!("arret demande par la requete quit");
+                    std::process::exit(0);
+                });
+                Response::ok(None)
+            }
         });
         if let Err(e) = res {
             tracing::warn!("pipe de controle indisponible: {e}");

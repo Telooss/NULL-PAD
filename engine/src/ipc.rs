@@ -7,7 +7,10 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use windows::core::{HSTRING, PWSTR};
-use windows::Win32::Foundation::{CloseHandle, LocalFree, ERROR_PIPE_CONNECTED, HANDLE, HLOCAL};
+use windows::Win32::Foundation::{
+    CloseHandle, LocalFree, ERROR_FILE_NOT_FOUND, ERROR_PIPE_BUSY, ERROR_PIPE_CONNECTED, HANDLE,
+    HLOCAL,
+};
 use windows::Win32::Security::Authorization::{
     ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
 };
@@ -18,6 +21,7 @@ use windows::Win32::Security::{
 use windows::Win32::Storage::FileSystem::{
     FlushFileBuffers, ReadFile, WriteFile, FILE_FLAGS_AND_ATTRIBUTES,
     FILE_FLAG_FIRST_PIPE_INSTANCE, PIPE_ACCESS_DUPLEX, PIPE_ACCESS_OUTBOUND,
+    SECURITY_IDENTIFICATION,
 };
 use windows::Win32::System::Pipes::{
     ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, PIPE_REJECT_REMOTE_CLIENTS,
@@ -272,12 +276,13 @@ pub fn serve_events(name: &str) -> io::Result<Events> {
     Ok(events)
 }
 
-#[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 #[serde(tag = "cmd", rename_all = "snake_case")]
 pub enum Request {
     Status,
     TestObs,
     TestMidi,
+    Quit,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -389,6 +394,49 @@ pub fn serve_control(
         };
     });
     Ok(())
+}
+
+/// Client de `--quit` : envoie `quit`, puis attend que le pipe disparaisse (`wait` au plus).
+/// Ok si le moteur s'est arrete ou n'etait pas lance ; ne demarre jamais rien.
+pub fn quit_engine(name: &str, wait: Duration) -> Result<(), String> {
+    use std::io::Write;
+    use std::os::windows::fs::OpenOptionsExt;
+    use std::time::Instant;
+    let deadline = Instant::now() + wait;
+    let absent = |e: &io::Error| e.raw_os_error() == Some(ERROR_FILE_NOT_FOUND.0 as i32);
+    let open = || {
+        // Identification seulement : un faux serveur ne peut pas usurper notre jeton.
+        std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .security_qos_flags(SECURITY_IDENTIFICATION.0)
+            .open(name)
+    };
+    let mut pipe = loop {
+        match open() {
+            Ok(f) => break f,
+            Err(e) if absent(&e) => return Ok(()),
+            Err(e)
+                if e.raw_os_error() == Some(ERROR_PIPE_BUSY.0 as i32)
+                    && Instant::now() < deadline =>
+            {
+                thread::sleep(Duration::from_millis(20))
+            }
+            Err(e) => return Err(format!("pipe du moteur: {e}")),
+        }
+    };
+    let line = serde_json::to_string(&Request::Quit).map_err(|e| e.to_string())? + "\n";
+    // Pas de lecture de la reponse (bloquante si le serveur se tait) : seule la
+    // disparition du pipe compte. Une erreur d'ecriture (moteur deja en sortie) est tolerée.
+    let _ = pipe.write_all(line.as_bytes());
+    drop(pipe);
+    loop {
+        match open() {
+            Err(e) if absent(&e) => return Ok(()),
+            _ if Instant::now() >= deadline => return Err("le moteur ne s'est pas arrete".into()),
+            _ => thread::sleep(Duration::from_millis(100)),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -517,5 +565,60 @@ mod tests {
             rx.try_recv().unwrap(),
             "{\"type\":\"profile\",\"profile\":1}\n"
         );
+    }
+
+    fn unique_pipe(tag: &str) -> String {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static N: AtomicU32 = AtomicU32::new(0);
+        format!(
+            r"\\.\pipe\nullctl-{tag}-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::Relaxed)
+        )
+    }
+
+    #[test]
+    fn quit_request_roundtrips() {
+        let s = serde_json::to_string(&Request::Quit).unwrap();
+        assert_eq!(s, r#"{"cmd":"quit"}"#);
+        assert_eq!(serde_json::from_str::<Request>(&s).unwrap(), Request::Quit);
+    }
+
+    #[test]
+    fn quit_without_engine_succeeds_at_once() {
+        let t = std::time::Instant::now();
+        quit_engine(&unique_pipe("quit-none"), Duration::from_secs(5)).unwrap();
+        assert!(t.elapsed() < Duration::from_secs(1));
+    }
+
+    #[test]
+    fn quit_reaches_handler_and_times_out_if_pipe_stays() {
+        let name = unique_pipe("quit-srv");
+        let got = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let g = got.clone();
+        serve_control(&name, move |req| {
+            if req == Request::Quit {
+                g.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+            Response::ok(None)
+        })
+        .unwrap();
+        // Le faux serveur ne s'arrete jamais : le delai doit etre signale.
+        assert!(quit_engine(&name, Duration::from_millis(400)).is_err());
+        assert!(got.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[test]
+    fn quit_does_not_hang_on_silent_server() {
+        let name = unique_pipe("quit-mute");
+        // Le serveur accepte puis ne repond jamais.
+        serve_control(&name, |_| {
+            thread::sleep(Duration::from_secs(10));
+            Response::ok(None)
+        })
+        .unwrap();
+        let t = std::time::Instant::now();
+        assert!(quit_engine(&name, Duration::from_millis(500)).is_err());
+        assert!(t.elapsed() < Duration::from_secs(3), "{:?}", t.elapsed());
     }
 }
