@@ -390,6 +390,7 @@ mod tests {
                 id: 1,
                 name: "p".into(),
                 tag: "AAA".into(),
+                description: None,
                 bindings,
             }],
         };

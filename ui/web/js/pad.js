@@ -30,12 +30,13 @@ export function createPad(stageEl, geo, opts = {}) {
 
   return {
     // map : InputId -> { text: [l1, l2], kind } ; une touche libre affiche le « + » gris.
-    setLegends(map) {
+    // dim : Set d'InputId grisees (non modifiables), facultatif.
+    setLegends(map, dim) {
       const arr = Array.from({ length: 23 }, (_, i) => {
         const l = map[inputOf(`F${i + 1}`)];
         return !l || l.kind === 'free' ? '' : l.text;
       });
-      p.legends(arr);
+      p.legends(arr, dim && Array.from({ length: 23 }, (_, i) => dim.has(inputOf(`F${i + 1}`))));
     },
     setLcd: (L) => p.lcd(L),
     select: (input) => p.select(input && pieceOf(input)),

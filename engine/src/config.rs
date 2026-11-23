@@ -131,8 +131,14 @@ pub struct Profile {
     pub id: u8,
     pub name: String,
     pub tag: String,
+    /// Texte libre affiche dans l'interface (fenetre du profil) ; le moteur l'ignore.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     pub bindings: Vec<Binding>,
 }
+
+/// Longueur maximale de `Profile::description`, en caracteres.
+pub const DESCRIPTION_MAX: usize = 140;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Binding {
@@ -319,6 +325,12 @@ fn validate(c: &Config) -> Result<(), String> {
         {
             return Err(format!("tag {:?} invalide (3 caracteres A-Z0-9)", p.tag));
         }
+        if p.description.as_ref().is_some_and(|d| d.chars().count() > DESCRIPTION_MAX) {
+            return Err(format!(
+                "description du profil {} trop longue ({DESCRIPTION_MAX} caracteres max)",
+                p.id
+            ));
+        }
         let mut seen = HashSet::new();
         for b in &p.bindings {
             if !seen.insert((b.input, b.trigger)) {
@@ -362,6 +374,7 @@ pub fn default_config() -> Config {
             id: 1,
             name: "Default".into(),
             tag: "DEF".into(),
+            description: None,
             bindings: vec![
                 bind("ENC_R_CW", Action::MicVolume { delta: 2 }),
                 bind("ENC_R_CCW", Action::MicVolume { delta: -2 }),

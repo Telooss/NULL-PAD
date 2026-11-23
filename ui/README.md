@@ -41,6 +41,8 @@ Puis ouvrir `http://localhost:5174/`. Paramètres d'URL :
 | `?pad=1&paderr=foreign-unsaved` | idem : changements non enregistrés faits dans ZMK Studio (« Abandonner les changements du pad ») |
 | `?pad=1&paderr=disconnected` | idem : pad débranché pendant l'écriture |
 | `?pad=absent` | pas de pad : natives en lecture seule, pastille « Pad non branché » |
+| `?pad=absent&link=ble` | pad en Bluetooth seulement : pastille « Lecture seule en Bluetooth », natives grisées en configuration |
+| `?engine=down` | moteur arrêté : pastille de lien cachée |
 | `?nofx=1` | mode « effets coupés » (aussi : Réglages > Démarrage > « Couper les effets », gardé dans le navigateur) |
 
 Effets coupés : plus de grain, de trame de points, de fenêtres de décor, de ruban, de textes de registre, de code-barres, d'étoile, ni de glitch. Tout le reste fonctionne pareil.

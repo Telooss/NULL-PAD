@@ -49,3 +49,8 @@ test('withNewProfile: want utilise s il est libre, sinon plus petit libre', () =
   assert.equal(withNewProfile(mk(1), { name: 'a', tag: 'AAA', want: 3 }).profiles[1].id, 3);
   assert.equal(withNewProfile(mk(1, 2), { name: 'a', tag: 'AAA', want: 2 }).profiles[2].id, 3);
 });
+
+test('withNewProfile: description facultative', () => {
+  assert.equal(withNewProfile(mk(1), { name: 'A', tag: 'AAA', description: 'Stream' }).profiles[1].description, 'Stream');
+  assert.equal('description' in withNewProfile(mk(1), { name: 'A', tag: 'AAA' }).profiles[1], false);
+});

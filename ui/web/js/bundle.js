@@ -133,7 +133,7 @@
       var b = new THREE.Box3().setFromPoints(pts), c = b.getCenter(new THREE.Vector3()), s = b.getSize(new THREE.Vector3());
       return { c: c.add(mesh.position), w: s.x, h: Math.hypot(s.y, s.z) };
     }
-    function label(F, text) { // texture de légende posée 0,04 mm au-dessus du dessus de la keycap
+    function label(F, text, dim) { // texture de légende posée 0,04 mm au-dessus du dessus de la keycap
       var mesh = byName[F]; if (!mesh) return;
       if (!mesh.userData.top) {
         var t = topFace(mesh, new THREE.Vector3(0, 0, 1)), cv = document.createElement('canvas'); cv.width = cv.height = 256;
@@ -142,18 +142,19 @@
         pl.position.copy(t.c).setZ(t.c.z + 0.04); pl.renderOrder = 4; pad.add(pl);
         mesh.userData.top = { cv: cv, tex: tex, t: t, pl: pl };
       }
-      var u = mesh.userData.top, sig = String(text); // nullctl : texte (ou [l1, l2]) inchangé → pas de redessin
+      var u = mesh.userData.top, sig = String(text) + (dim ? '|dim' : ''); // nullctl : texte (ou [l1, l2]) inchangé → pas de redessin
+      var ink = dim ? (VIOLET_KEYS[F] ? 'rgba(243,239,255,0.45)' : '#bdb7c8') : VIOLET_KEYS[F] ? '#f3efff' : '#2a2533'; // nullctl : grisée = non modifiable
       if (u.text === sig) return; u.text = sig;
       var x = u.cv.getContext('2d');
       x.clearRect(0, 0, 256, 256); x.textAlign = 'center'; x.textBaseline = 'middle';
       if (Array.isArray(text) && text[1]) { // nullctl : légende sur deux lignes
-        x.fillStyle = VIOLET_KEYS[F] ? '#f3efff' : '#2a2533'; x.font = '600 50px "IBM Plex Mono", monospace';
+        x.fillStyle = ink; x.font = '600 50px "IBM Plex Mono", monospace';
         x.fillText(text[0].toUpperCase(), 128, 104); x.fillText(text[1].toUpperCase(), 128, 160);
         u.tex.needsUpdate = true; return;
       }
       if (Array.isArray(text)) text = text[0] || '';
       var empty = !text, small = text && text.length > 4;
-      x.fillStyle = VIOLET_KEYS[F] ? '#f3efff' : empty ? '#8f899a' : '#2a2533';
+      x.fillStyle = empty && !dim && !VIOLET_KEYS[F] ? '#8f899a' : ink;
       x.font = (empty ? '400 104px ' : small ? '600 50px ' : '700 ' + (text.length > 2 ? 74 : 96) + 'px ') + '"IBM Plex Mono", monospace';
       x.fillText(empty ? '+' : small ? text.toUpperCase() : text, 128, 132);
       u.tex.needsUpdate = true;
@@ -235,7 +236,7 @@
       stage.appendChild(el);
     });
 
-    function legends(arr) { for (var i = 1; i <= 23; i++) label('F' + i, arr[i - 1] || ''); render(); }
+    function legends(arr, dim) { for (var i = 1; i <= 23; i++) label('F' + i, arr[i - 1] || '', dim && dim[i - 1]); render(); }
     legends(o.legends || NUMPAD);
     lcd(o.lcd || { top: 'USB', tag: 'DEF', bottom: 'P1' });
     select(o.sel);

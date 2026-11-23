@@ -11,9 +11,9 @@ import { saveFlow, guard, confirmBox, modalOpen } from './config-mode.js';
 import { createSettings, updateCheckOn } from './settings.js';
 import { shouldCheck, describe, progressText } from './update.js';
 import { initFx } from './fx.js';
-import { barSlots, nextFreeId, withNewProfile, withoutProfile, openCreate, openMenu, cleanTag, slotLabel, NAME_MAX } from './profiles.js';
+import { barSlots, nextFreeId, withNewProfile, withoutProfile, openCreate, openMenu, cleanTag, slotLabel, NAME_MAX, DESC_MAX } from './profiles.js';
 import { createPadFlow } from './pad-flow.js';
-import { isAction, setNative, setAction, renameLayer, withLayer, copyLayer, samePad, withoutOrphans, padErrorText } from './pad-model.js';
+import { INPUTS, canBind, isAction, setNative, setAction, renameLayer, withLayer, copyLayer, samePad, withoutOrphans, padErrorText } from './pad-model.js';
 
 const N = window.NullCtl;
 const app = document.getElementById('app');
@@ -33,7 +33,7 @@ const slots = profileSlots(cfg);
 let profileId = slots.find(Boolean)?.id ?? 1;
 let padProfile = profileId; // dernier profil annonce par le pad
 let selected = null;
-let link = 'none';
+let link = null;
 let draft = null; // non nul = mode configuration
 let configWaiter = null;
 let saving = false; // enregistrement en cours : boutons, profils, depots et panneau figes
@@ -55,10 +55,27 @@ rename.className = 'nc-rename';
 rename.hidden = true;
 rename.innerHTML = `<label class="nc-label">Nom<input class="nc-input" data-name maxlength="${NAME_MAX}" spellcheck="false" autocomplete="off"></label>` +
   '<label class="nc-label">Tag<input class="nc-input" data-tag maxlength="3" spellcheck="false" autocomplete="off" aria-describedby="nc-tag-hint"></label>' +
-  '<span class="nc-label" id="nc-tag-hint">A–Z 0–9 · 3 caractères</span>';
+  '<span class="nc-label" id="nc-tag-hint">A–Z 0–9 · 3 caractères</span>' +
+  `<label class="nc-label">Description<input class="nc-input" data-desc maxlength="${DESC_MAX}" spellcheck="false" autocomplete="off" placeholder="facultatif"></label>`;
 stage.appendChild(rename);
 const nameIn = rename.querySelector('[data-name]');
 const tagIn = rename.querySelector('[data-tag]');
+const descIn = rename.querySelector('[data-desc]');
+// Accueil : fenetre Win98 du profil affiche (nom, et description s'il y en a une). Decor : ne prend aucun clic.
+const profWin = document.createElement('div');
+profWin.className = 'nc-w98 nc-profwin';
+profWin.innerHTML = '<div class="bar"><span></span><i>×</i></div><div class="body"><b></b><p></p></div>';
+stage.append(profWin, Object.assign(document.createElement('i'), { className: 'nc-tape nc-profwin-tape' }));
+function refreshProfWin() {
+  const p = profileOf(shown(), profileId);
+  profWin.hidden = !p;
+  if (!p) return;
+  profWin.querySelector('.bar span').textContent = `profil_${p.tag.toLowerCase()}.exe`;
+  profWin.querySelector('b').textContent = p.name;
+  const d = profWin.querySelector('p');
+  d.textContent = p.description ?? '';
+  d.hidden = !p.description;
+}
 
 // Barre des profils : relue depuis ce qui est affiche (le brouillon fusionne montre les renommages en cours).
 function renderBar() {
@@ -81,7 +98,7 @@ const requestConfig = async () => {
 };
 const viewPanel = createViewPanel(panelEl, { onConfigure: requestConfig });
 const editPanel = createEditPanel(panelEl, { pickFile, onChange: () => refreshPad() });
-shell.setLink('none');
+shell.setLink(null);
 shell.setEngine(false);
 shell.onConfigure(requestConfig);
 shell.setConfigurable(!cfgError);
@@ -126,10 +143,13 @@ function refreshPanel() {
 function refreshLcd() {
   const top = { usb: 'USB', ble: 'BLE' }[link] ?? '---';
   pad.setLcd({ top, tag: (profileOf(shown(), profileId)?.tag ?? '').toUpperCase(), bottom: `P${profileId}` });
+  refreshProfWin();
 }
 
 function refreshPad() {
-  pad.setLegends(legendsFor(shown(), profileId, natives, padCtx()?.model));
+  const ui = padUi();
+  const dim = draft ? new Set(INPUTS.filter((i) => !canBind(profileId, i, natives, ui))) : undefined;
+  pad.setLegends(legendsFor(shown(), profileId, natives, padCtx()?.model), dim);
   refreshLcd();
 }
 
@@ -184,6 +204,7 @@ function enterConfig() {
   editPanel.setError(null);
   nameIn.value = draft.get().name;
   tagIn.value = draft.get().tag;
+  descIn.value = draft.get().description ?? '';
   tagIn.removeAttribute('aria-invalid');
   rename.hidden = false;
   renderBar();
@@ -316,13 +337,14 @@ function applyMeta() {
   const tag = cleanTag(tagIn.value);
   if (tagIn.value !== tag) tagIn.value = tag;
   tagIn.toggleAttribute('aria-invalid', tag.length !== 3);
-  draft.setProfileMeta({ name: nameIn.value.trim() || cur.name, tag: tag.length === 3 ? tag : cur.tag });
+  draft.setProfileMeta({ name: nameIn.value.trim() || cur.name, tag: tag.length === 3 ? tag : cur.tag, description: descIn.value.trim() });
   if (padEdit && cur.tag !== before) padEdit.target = renameLayer(padEdit.target, profileId, cur.tag, padEdit.maxLen); // l'ecran du pad affiche le tag
   renderBar();
   refreshLcd();
 }
 nameIn.addEventListener('input', applyMeta);
 tagIn.addEventListener('input', applyMeta);
+descIn.addEventListener('input', applyMeta);
 nameIn.addEventListener('blur', () => { if (draft) nameIn.value = draft.get().name; });
 tagIn.addEventListener('blur', () => { if (draft) { tagIn.value = draft.get().tag; tagIn.removeAttribute('aria-invalid'); } });
 
@@ -425,7 +447,7 @@ async function newProfile(want) {
   creating = false;
   refreshPad();
   if (!out || draft) return;
-  const next = withNewProfile(cfg, { name: out.name, tag: out.tag, copyFrom: out.copy ? fromId : undefined, want: id });
+  const next = withNewProfile(cfg, { name: out.name, tag: out.tag, description: out.description, copyFrom: out.copy ? fromId : undefined, want: id });
   const newId = next.profiles.find((p) => !profileOf(cfg, p.id)).id;
   const bindings = (m) => (out.copy ? copyLayer(m.layers[fromId - 1].bindings, fromId, newId) : invoke('pad_default_layer', { profile: newId }));
   if (!(await writeNow(next, { id: newId, bindings, name: out.tag }))) return;

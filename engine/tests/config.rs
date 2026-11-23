@@ -289,3 +289,25 @@ fn label_roundtrips_and_is_optional() {
         "HORN"
     );
 }
+
+#[test]
+fn description_is_optional_and_bounded() {
+    let mut v: serde_json::Value = serde_json::from_str(GOOD).unwrap();
+    let c = parse(&v.to_string()).unwrap();
+    assert_eq!(c.profiles[0].description, None);
+    assert!(serde_json::to_value(&c).unwrap()["profiles"][0]
+        .get("description")
+        .is_none());
+
+    v["profiles"][0]["description"] = "Scènes et micro pour le stream".into();
+    let c = parse(&v.to_string()).unwrap();
+    assert_eq!(
+        c.profiles[0].description.as_deref(),
+        Some("Scènes et micro pour le stream")
+    );
+
+    v["profiles"][0]["description"] = "é".repeat(DESCRIPTION_MAX).into();
+    assert!(parse(&v.to_string()).is_ok());
+    v["profiles"][0]["description"] = "é".repeat(DESCRIPTION_MAX + 1).into();
+    invalid(&v.to_string());
+}

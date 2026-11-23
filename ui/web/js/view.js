@@ -115,4 +115,4 @@ export function toastText(e, binding) {
   return `${e.input} → ${d.title}${d.desc ? ` : ${d.desc}` : ''}`;
 }
 
-export const linkText = (link) => ({ usb: 'USB', ble: 'BLE' })[link] ?? 'Pad absent';
+export const linkText = (link) => ({ usb: 'USB', ble: 'Bluetooth' })[link] ?? 'Pad absent';

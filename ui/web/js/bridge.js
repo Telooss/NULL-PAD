@@ -51,7 +51,11 @@ const mock = {
     mockCfg = JSON.parse(json);
     setTimeout(() => emit('engine-event', { type: 'config', ok: true, error: null }), 200);
   },
-  engine_status: () => ({ profile: mockProfile, link: 'usb', version: '0.1.0' }),
+  engine_status: () => {
+    const u = new URLSearchParams(location.search);
+    if (u.get('engine') === 'down') throw new Error('moteur arrêté');
+    return { profile: mockProfile, link: u.get('link') ?? 'usb', version: '0.1.0' };
+  },
   start_engine: () => null,
   list_audio_outputs: () => ['Speakers (Realtek Audio)', 'Headphones (Focusrite USB Audio)', 'CABLE Input (VB-Audio Virtual Cable)'],
   cable_present: () => true,

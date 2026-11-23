@@ -25,7 +25,7 @@ export async function startLive({ invoke, listen, app, pad, shell, binding, setP
       if (follow) setProfile(s.profile, false);
     } catch {
       shell.setEngine(false);
-      setLink('none');
+      setLink(null); // moteur arrete : lien inconnu, pas « absent »
     }
   }
 
@@ -39,7 +39,7 @@ export async function startLive({ invoke, listen, app, pad, shell, binding, setP
     }
   });
   await listen('engine-up', () => { probe(true); onUp?.(); });
-  await listen('engine-down', () => { shell.setEngine(false); setLink('none'); });
+  await listen('engine-down', () => { shell.setEngine(false); setLink(null); });
   shell.onStart(() => invoke('start_engine').catch((err) => toast(app, String(err))));
   await probe(true);
 }

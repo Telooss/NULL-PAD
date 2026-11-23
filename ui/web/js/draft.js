@@ -7,7 +7,7 @@ export function canBind(profileId, input, natives = {}) {
 // JSON a cles triees : comparaison independante de l'ordre des cles et des liaisons.
 const canon = (v) => JSON.stringify(v, (_, x) => (x && typeof x === 'object' && !Array.isArray(x)
   ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, x[k]])) : x));
-const norm = (p) => canon({ name: p.name, tag: p.tag,
+const norm = (p) => canon({ name: p.name, tag: p.tag, description: p.description ?? '',
   bindings: [...p.bindings].sort((a, b) => (a.input + a.trigger).localeCompare(b.input + b.trigger)) });
 
 // Config la plus recente + le profil edite + les sons ajoutes/modifies : le reste n'est jamais ecrase.
@@ -56,7 +56,11 @@ export function createDraft(config, profileId) {
     sounds: () => lib,
     // Sons ajoutes ou modifies depuis l'entree en configuration.
     soundChanges: () => lib.filter((s) => canon(base.sound?.sounds?.find((x) => x.id === s.id)) !== canon(s)),
-    setProfileMeta({ name, tag }) { cur.name = name; cur.tag = tag; },
+    setProfileMeta({ name, tag, description }) {
+      cur.name = name;
+      cur.tag = tag;
+      if (description) cur.description = description; else delete cur.description;
+    },
     dirty: () => norm(cur) !== start || canon(lib) !== libStart,
     merged() {
       const out = structuredClone(base);

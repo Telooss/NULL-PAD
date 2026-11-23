@@ -4,9 +4,16 @@ import { slotLabel } from './profiles.js';
 
 const N = window.NullCtl;
 const LINK_ICON = { usb: 'usb', ble: 'bluetooth', none: 'unplug' };
-// Pastille du pad (pillState de pad-model.js) : [icone, texte].
-const PAD_PILL = { editable: ['unlock', 'Pad modifiable'], locked: ['lock', 'Pad verrouillé'], absent: ['unplug', 'Pad non branché'],
-  stale: ['alert-triangle', 'Pad pas à jour'], busy: ['loader', 'Pad occupé'] };
+// Pad vu par le moteur en Bluetooth mais pas en USB : les natives ne s'ecrivent qu'en USB.
+const BLE_PILL = ['lock', 'Lecture seule en Bluetooth', 'Connecté en Bluetooth : les actions nullctl marchent, mais les touches natives (grisées) ne se modifient qu’en USB. Branche le câble pour les modifier.'];
+// Pastille du pad (pillState de pad-model.js) : [icone, texte, bulle d'aide].
+const PAD_PILL = {
+  editable: ['unlock', 'Pad modifiable', 'Pad branché en USB et déverrouillé : ses touches se modifient dans « Configurer ».'],
+  locked: ['lock', 'Pad verrouillé', 'Appuie sur M1 + M3 ensemble pour pouvoir modifier le pad.'],
+  absent: ['unplug', 'Pad non branché', 'Branche le pad en USB pour modifier ses touches natives (et ferme ZMK Studio).'],
+  stale: ['alert-triangle', 'Pad pas à jour', 'Le pad ne suit pas la config : « Configurer » puis « Enregistrer » avec le pad branché.'],
+  busy: ['loader', 'Pad occupé', 'Lecture ou écriture du pad en cours.'],
+};
 
 // Barre des profils : setSlots(barSlots(config), actif) a chaque changement ; renvoie les mises a jour de la barre.
 export function mountShell() {
@@ -43,11 +50,22 @@ export function mountShell() {
     e.preventDefault();
     cbs.menu(+s.dataset.id, s);
   });
-  const pill = (el, icon, text) => { el.innerHTML = `<i data-lucide="${icon}"></i><span class="lbl">${text}</span>`; el.title = text; N.icons(); };
+  const pill = (el, icon, text, hint = text) => { el.innerHTML = `<i data-lucide="${icon}"></i><span class="lbl">${text}</span>`; el.title = hint; N.icons(); };
+
+  let padState = 'absent';
+  let linkNow = null;
+  const drawPad = () => pill(q('[data-pad]'), ...(padState === 'absent' && linkNow === 'ble' ? BLE_PILL : PAD_PILL[padState] ?? PAD_PILL.absent));
 
   return {
-    setLink: (link) => pill(q('[data-link]'), LINK_ICON[link] ?? 'unplug', linkText(link)),
-    setPad: (state) => pill(q('[data-pad]'), ...(PAD_PILL[state] ?? PAD_PILL.absent)),
+    // link null : moteur arrete, lien inconnu -> pastille cachee (la pastille du pad dit deja s'il est branche).
+    setLink: (link) => {
+      const el = q('[data-link]');
+      linkNow = link;
+      drawPad();
+      el.style.display = link ? '' : 'none';
+      if (link) pill(el, LINK_ICON[link] ?? 'unplug', linkText(link), link === 'none' ? 'Le moteur ne voit pas le pad (ni USB ni Bluetooth).' : `Pad relié en ${linkText(link)}.`);
+    },
+    setPad: (state) => { padState = state; drawPad(); },
     setEngine(up) {
       engineUp = up;
       pill(q('[data-engine]'), up ? 'cpu' : 'power-off', up ? 'Moteur en marche' : 'Moteur arrêté');
