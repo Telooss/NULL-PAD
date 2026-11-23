@@ -61,6 +61,7 @@ docs/superpowers/plans/         plans d'implémentation et suivi
 
 ## Documentation
 
+- **[Guide : configurer chaque touche](docs/GUIDE.md)** (raccourcis, OBS, MIDI, applis, sons, molettes, profils)
 - [Conception du logiciel](docs/superpowers/specs/2026-11-05-logiciel-macropad-design.md)
 - [Plan du moteur](docs/superpowers/plans/2026-11-05-moteur.md) et [points de suivi](docs/superpowers/plans/2026-11-05-moteur-suivi.md)
 - [Conception de l'interface](docs/superpowers/specs/2026-11-07-interface-design.md) et [son README](ui/README.md)
