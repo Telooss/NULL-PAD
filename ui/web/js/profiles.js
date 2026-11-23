@@ -3,6 +3,7 @@
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 export const MAX_PROFILES = 8;
 export const NAME_MAX = 18;
+export const DESC_MAX = 140; // = DESCRIPTION_MAX du moteur
 
 const fold = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
 
@@ -28,13 +29,13 @@ export function nextFreeId(config) {
 }
 
 // want : id souhaite (emplacement M choisi), utilise s'il est libre.
-export function withNewProfile(config, { name, tag, copyFrom, want }) {
+export function withNewProfile(config, { name, tag, description, copyFrom, want }) {
   const taken = (config?.profiles ?? []).some((p) => p.id === want);
   const id = want >= 1 && want <= MAX_PROFILES && !taken ? want : nextFreeId(config);
   if (id === null) throw new Error(`${MAX_PROFILES} profils au maximum`);
   const src = copyFrom == null ? null : config.profiles.find((p) => p.id === copyFrom);
   const out = structuredClone(config);
-  out.profiles.push({ id, name, tag, bindings: src ? structuredClone(src.bindings) : [] });
+  out.profiles.push({ id, name, tag, ...(description ? { description } : {}), bindings: src ? structuredClone(src.bindings) : [] });
   out.profiles.sort((a, b) => a.id - b.id);
   return out;
 }
@@ -110,6 +111,9 @@ export function openCreate(host, { id, from, onPreview }) {
       '<div><label class="nc-label" for="cp-name" style="display:block;margin-bottom:6px">Nom du profil</label>' +
       `<input class="cp-name" id="cp-name" maxlength="${NAME_MAX}" spellcheck="false" autocomplete="off">` +
       `<div class="cp-help" style="margin-top:8px">Affiché en haut de nullctl. Jusqu’à ${NAME_MAX} caractères.</div></div>` +
+      '<div><label class="nc-label" for="cp-desc" style="display:block;margin-bottom:6px">Description · facultatif</label>' +
+      `<input class="cp-name cp-desc" id="cp-desc" maxlength="${DESC_MAX}" spellcheck="false" autocomplete="off" placeholder="Ex. : scènes OBS et micro pour le stream">` +
+      '<div class="cp-help" style="margin-top:8px">Affichée sur l’accueil, sous le nom du profil.</div></div>' +
       '<div class="cp-row"><div><div class="nc-label" style="margin-bottom:8px">Tag · affiché sur l’écran du pad</div><div class="cp-tag"></div>' +
       '<div class="cp-help" style="margin-top:8px">Proposé depuis le nom. A–Z et 0–9.</div></div>' +
       '<div><div class="nc-label" style="margin-bottom:8px">Touche de profil</div><div class="cp-slots"></div><div class="cp-help cp-mnote" style="margin-top:8px"></div></div></div>' +
@@ -172,7 +176,7 @@ export function openCreate(host, { id, from, onPreview }) {
     });
 
     const done = (v) => { wrap.remove(); document.removeEventListener('keydown', key, true); resolve(v); };
-    const submit = () => { if (name.value.trim()) done({ name: name.value.trim(), tag: tag.join(''), copy }); };
+    const submit = () => { if (name.value.trim()) done({ name: name.value.trim(), tag: tag.join(''), description: q('.cp-desc').value.trim() || undefined, copy }); };
     const key = (e) => {
       if (e.key === 'Escape') { e.stopPropagation(); done(null); }
       else if (e.key === 'Enter' && e.target.tagName !== 'BUTTON') { e.preventDefault(); submit(); }

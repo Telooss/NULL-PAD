@@ -96,3 +96,13 @@ test('mergeDraft keeps latest settings/profiles, applies profile and sound chang
   assert.deepEqual(mergeDraft(latest, d.get()).sound, latest.sound);
   assert.throws(() => mergeDraft({ ...latest, profiles: [latest.profiles[0]] }, d.get()), /supprimé/);
 });
+
+test('description : brouillon modifie, vide = champ retire', () => {
+  const d = createDraft(cfg(), 2);
+  d.setProfileMeta({ name: 'B', tag: 'BBB', description: 'Stream' });
+  assert.equal(d.dirty(), true);
+  assert.equal(d.merged().profiles[1].description, 'Stream');
+  d.setProfileMeta({ name: 'B', tag: 'BBB', description: '' });
+  assert.equal(d.dirty(), false);
+  assert.equal('description' in d.merged().profiles[1], false);
+});

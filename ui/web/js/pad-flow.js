@@ -91,7 +91,9 @@ export function createPadFlow({ invoke, listen, app, shell, toast, onModel }) {
           toast(`Pad non lu : ${parseErr(e2).message}`);
           return null;
         }
-        toast(err.code === 'foreign-unsaved' ? `Pad non lu : ${why}` : `Pad non lu (${err.message}) : ${why}`);
+        toast(err.code === 'foreign-unsaved' ? `Pad non lu : ${why}`
+          : err.code === 'cancelled' ? `Déverrouillage annulé (M1 + M3) : ${why}`
+          : `Pad non lu (${err.message}) : ${why}`);
         poll();
         return null;
       }

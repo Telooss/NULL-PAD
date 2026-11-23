@@ -55,6 +55,18 @@ textarea.nc-input { resize: vertical; }
 .nc-rename [data-tag] { width: 64px; font-family: var(--font-mono); text-transform: uppercase; }
 .nc-rename [aria-invalid] { border-color: #c42b3a; }
 @media (max-width: 1500px) { .nc-rename #nc-tag-hint { display: none; } }
+.nc-rename { flex-wrap: wrap; max-width: 420px; }
+.nc-rename label:has([data-desc]) { flex: 1 0 100%; }
+.nc-rename [data-desc] { width: 100%; box-sizing: border-box; }
+.is-config .nc-profwin { top: 150px; }
+.is-config .nc-profwin-tape { top: 138px; }
+/* Fenetre Win98 du profil affiche, sur l'accueil (decor : aucun clic). */
+.nc-profwin { left: 44px; top: 112px; width: 250px; transform: rotate(-2deg); z-index: 2; pointer-events: none; }
+.nc-profwin b { font-size: 14px; line-height: 18px; overflow-wrap: anywhere; }
+.nc-profwin p { margin: 0; overflow-wrap: anywhere; }
+.nc-profwin-tape { left: 206px; top: 100px; transform: rotate(9deg); z-index: 3; pointer-events: none; }
+.nc-profwin[hidden] + .nc-profwin-tape { display: none; }
+@media (max-width: 1350px) { .nc-profwin, .nc-profwin-tape { display: none; } }
 
 /* Creation d'un profil : l'ecran couvre la scene et le panneau (adapte de design/components/CreationProfil). */
 .nc-main { position: relative; }

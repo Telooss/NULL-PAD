@@ -42,6 +42,6 @@ test('slots, toasts, link', () => {
   assert.equal(toastText({ input: 'K07', ok: true, kind: 'Sound' }), 'K07 → Sound');
   assert.equal(toastText({ input: 'K07', ok: false, error: 'OBS injoignable' }), 'K07 → erreur : OBS injoignable');
   assert.equal(linkText('none'), 'Pad absent');
-  assert.equal(linkText('ble'), 'BLE');
+  assert.equal(linkText('ble'), 'Bluetooth');
   assert.equal(placeOf('K05'), 'Rangée 2 · colonne 2');
 });
