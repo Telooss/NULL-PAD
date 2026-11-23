@@ -39,7 +39,11 @@ if (-not (Test-Path $keyFile)) { Fail "Cle absente ($keyFile). Genere-la : cargo
 $pubkey = (Get-Content (Join-Path $root 'ui\tauri.bundle.json') -Raw | ConvertFrom-Json).plugins.updater.pubkey
 if ([string]::IsNullOrWhiteSpace($pubkey)) { Fail "pubkey vide dans ui\tauri.bundle.json : genere la cle (cargo tauri signer generate) et colle la cle publique." }
 if ($Publish) {
-    cmd /c "gh auth status >nul 2>&1"
+    # Pas de cmd /c : cmd peut ne pas trouver gh alors que PowerShell le trouve.
+    if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { Fail "gh introuvable (installe GitHub CLI)." }
+    $ErrorActionPreference = 'Continue'  # stderr natif ne doit pas lever
+    gh auth status *> $null
+    $ErrorActionPreference = 'Stop'
     if ($LASTEXITCODE -ne 0) { Fail "gh n'est pas connecte (gh auth login)." }
 }
 
